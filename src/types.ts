@@ -4,6 +4,11 @@ export interface Message {
   timestamp: number;
   type?: 'text' | 'chart' | 'table' | 'report';
   data?: any;
+  metrics?: {
+    total_duration: number;
+    prompt_eval_count: number;
+    eval_count: number;
+  };
 }
 
 export interface OllamaModel {
@@ -68,4 +73,7 @@ export interface ModelConfig {
   internet_access: boolean;
   hardware_acceleration: boolean;
   ollama_url: string;
+  show_metrics: boolean;
+  fs_read_access: boolean;
+  fs_write_access: boolean;
 }

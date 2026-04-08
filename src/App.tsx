@@ -102,7 +102,10 @@ export default function App() {
     seed: 42,
     internet_access: true,
     hardware_acceleration: true,
-    ollama_url: 'http://localhost:11434'
+    ollama_url: 'http://localhost:11434',
+    show_metrics: true,
+    fs_read_access: false,
+    fs_write_access: false
   });
   
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -255,9 +258,15 @@ export default function App() {
 
       // 2. System Instruction from Selected Personality Profile
       const selectedProfile = personalityProfiles.find(p => p.id === selectedProfileId) || personalityProfiles[0];
+      
+      let permissionInfo = "\n\nESTADO DE PERMISOS ACTUAL:";
+      permissionInfo += `\n- Búsqueda Web: ${modelConfig.internet_access ? 'HABILITADO' : 'DESHABILITADO'}`;
+      permissionInfo += `\n- Lectura de Archivos (FS): ${modelConfig.fs_read_access ? 'HABILITADO' : 'DESHABILITADO'}`;
+      permissionInfo += `\n- Escritura de Archivos (FS): ${modelConfig.fs_write_access ? 'HABILITADO' : 'DESHABILITADO'}`;
+      
       const systemInstruction = {
         role: 'system',
-        content: selectedProfile.systemPrompt
+        content: selectedProfile.systemPrompt + permissionInfo
       };
 
       const apiMessages = [
@@ -320,6 +329,18 @@ export default function App() {
               setMessages(prev => {
                 const newMessages = [...prev];
                 newMessages[newMessages.length - 1].content = assistantContent;
+                return newMessages;
+              });
+            }
+
+            if (json.done) {
+              setMessages(prev => {
+                const newMessages = [...prev];
+                newMessages[newMessages.length - 1].metrics = {
+                  total_duration: json.total_duration,
+                  prompt_eval_count: json.prompt_eval_count,
+                  eval_count: json.eval_count
+                };
                 return newMessages;
               });
             }
@@ -505,6 +526,22 @@ export default function App() {
                                 <Badge variant="outline" className="bg-red-100 text-red-800 border-red-800 rounded-none text-[9px] px-1 py-0">OFFLINE</Badge>
                               )}
                             </div>
+                            <div className="flex items-center justify-between text-xs font-mono">
+                              <span className="opacity-70">FS Read Access</span>
+                              {modelConfig.fs_read_access ? (
+                                <Badge variant="outline" className="bg-green-100 text-green-800 border-green-800 rounded-none text-[9px] px-1 py-0">GRANTED</Badge>
+                              ) : (
+                                <Badge variant="outline" className="bg-red-100 text-red-800 border-red-800 rounded-none text-[9px] px-1 py-0">DENIED</Badge>
+                              )}
+                            </div>
+                            <div className="flex items-center justify-between text-xs font-mono">
+                              <span className="opacity-70">FS Write Access</span>
+                              {modelConfig.fs_write_access ? (
+                                <Badge variant="outline" className="bg-green-100 text-green-800 border-green-800 rounded-none text-[9px] px-1 py-0">GRANTED</Badge>
+                              ) : (
+                                <Badge variant="outline" className="bg-red-100 text-red-800 border-red-800 rounded-none text-[9px] px-1 py-0">DENIED</Badge>
+                              )}
+                            </div>
                             {systemStatus.dependencies.map((dep, i) => (
                               <div key={i} className="flex items-center justify-between text-xs font-mono">
                                 <span className="opacity-70">{dep.name}</span>
@@ -581,6 +618,33 @@ export default function App() {
                           <div 
                             className={cn(
                               "flex items-center justify-between p-3 border border-[#141414] transition-all cursor-pointer",
+                              modelConfig.show_metrics 
+                                ? "bg-[#141414] text-[#E4E3E0]" 
+                                : "bg-white/50 text-[#141414] hover:bg-white/80"
+                            )}
+                            onClick={() => setModelConfig(prev => ({ ...prev, show_metrics: !prev.show_metrics }))}
+                          >
+                            <div className="flex flex-col gap-0.5">
+                              <span className="text-[10px] font-mono font-bold uppercase">Show Performance Metrics</span>
+                              <span className={cn(
+                                "text-[8px] font-mono",
+                                modelConfig.show_metrics ? "opacity-70" : "opacity-50"
+                              )}>Mostrar tiempo y tokens al final</span>
+                            </div>
+                            <Switch 
+                              checked={modelConfig.show_metrics} 
+                              onCheckedChange={(v) => setModelConfig(prev => ({ ...prev, show_metrics: v }))}
+                              className={cn(
+                                "data-[state=checked]:bg-[#E4E3E0] data-[state=checked]:border-[#E4E3E0]",
+                                !modelConfig.show_metrics && "data-[state=unchecked]:bg-[#141414]/20"
+                              )}
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                          </div>
+
+                          <div 
+                            className={cn(
+                              "flex items-center justify-between p-3 border border-[#141414] transition-all cursor-pointer",
                               modelConfig.internet_access 
                                 ? "bg-[#141414] text-[#E4E3E0]" 
                                 : "bg-white/50 text-[#141414] hover:bg-white/80"
@@ -630,6 +694,58 @@ export default function App() {
                               )}
                               onClick={(e) => e.stopPropagation()}
                             />
+                          </div>
+
+                          <Separator className="bg-[#141414]/10" />
+
+                          <div className="grid grid-cols-2 gap-2">
+                            <div 
+                              className={cn(
+                                "flex flex-col gap-2 p-3 border border-[#141414] transition-all cursor-pointer",
+                                modelConfig.fs_read_access 
+                                  ? "bg-[#141414] text-[#E4E3E0]" 
+                                  : "bg-white/50 text-[#141414] hover:bg-white/80"
+                              )}
+                              onClick={() => setModelConfig(prev => ({ ...prev, fs_read_access: !prev.fs_read_access }))}
+                            >
+                              <div className="flex items-center justify-between">
+                                <span className="text-[10px] font-mono font-bold uppercase">FS Read</span>
+                                <Switch 
+                                  checked={modelConfig.fs_read_access} 
+                                  onCheckedChange={(v) => setModelConfig(prev => ({ ...prev, fs_read_access: v }))}
+                                  className={cn(
+                                    "data-[state=checked]:bg-[#E4E3E0] data-[state=checked]:border-[#E4E3E0]",
+                                    !modelConfig.fs_read_access && "data-[state=unchecked]:bg-[#141414]/20"
+                                  )}
+                                  onClick={(e) => e.stopPropagation()}
+                                />
+                              </div>
+                              <span className="text-[8px] font-mono opacity-50">Lectura de archivos</span>
+                            </div>
+
+                            <div 
+                              className={cn(
+                                "flex flex-col gap-2 p-3 border border-[#141414] transition-all cursor-pointer",
+                                modelConfig.fs_write_access 
+                                  ? "bg-[#141414] text-[#E4E3E0]" 
+                                  : "bg-white/50 text-[#141414] hover:bg-white/80"
+                              )}
+                              onClick={() => setModelConfig(prev => ({ ...prev, fs_write_access: !prev.fs_write_access }))}
+                            >
+                              <div className="flex items-center justify-between">
+                                <span className="text-[10px] font-mono font-bold uppercase">FS Write</span>
+                                <Switch 
+                                  checked={modelConfig.fs_write_access} 
+                                  onCheckedChange={(v) => setModelConfig(prev => ({ ...prev, fs_write_access: v }))}
+                                  className={cn(
+                                    "data-[state=checked]:bg-[#E4E3E0] data-[state=checked]:border-[#E4E3E0]",
+                                    !modelConfig.fs_write_access && "data-[state=unchecked]:bg-[#141414]/20"
+                                  )}
+                                  onClick={(e) => e.stopPropagation()}
+                                />
+                              </div>
+                              <span className="text-[8px] font-mono opacity-50">Escritura de archivos</span>
+                            </div>
                           </div>
 
                           <Separator className="bg-[#141414]/10" />
@@ -1049,6 +1165,29 @@ export default function App() {
                         {msg.content}
                       </ReactMarkdown>
                     </div>
+
+                    {msg.role === 'assistant' && msg.metrics && modelConfig.show_metrics && (
+                      <div className="pt-4 mt-4 border-t border-[#141414]/5 space-y-1">
+                        <div className="flex items-center gap-2 text-[9px] font-mono uppercase opacity-40">
+                          <Activity className="w-3 h-3" />
+                          <span>Métricas de Rendimiento</span>
+                        </div>
+                        <div className="grid grid-cols-3 gap-4">
+                          <div className="flex flex-col">
+                            <span className="text-[8px] font-mono uppercase opacity-40">Tiempo Generación</span>
+                            <span className="text-[10px] font-mono font-bold">{(msg.metrics.total_duration / 1e9).toFixed(2)}s</span>
+                          </div>
+                          <div className="flex flex-col">
+                            <span className="text-[8px] font-mono uppercase opacity-40">Tokens Contexto</span>
+                            <span className="text-[10px] font-mono font-bold">{msg.metrics.prompt_eval_count}</span>
+                          </div>
+                          <div className="flex flex-col">
+                            <span className="text-[8px] font-mono uppercase opacity-40">Tokens Respuesta</span>
+                            <span className="text-[10px] font-mono font-bold">{msg.metrics.eval_count}</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </motion.div>
               ))}
