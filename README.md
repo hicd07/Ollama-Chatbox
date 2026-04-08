@@ -1,6 +1,6 @@
-# Architect AI Chatbot - Guía de Instalación para Windows
+# Ollie - Ollama Sandbox GUI
 
-Este chatbot es una aplicación portable diseñada para ejecutarse localmente en Windows, conectándose a tu instancia de Ollama.
+Ollie es una interfaz profesional de Sandbox diseñada para ejecutarse localmente con Ollama, ofreciendo herramientas de gestión de archivos, investigación web y funciones agénticas autónomas.
 
 ## Requisitos Previos
 

@@ -1,5 +1,5 @@
 {
-  "name": "Ollama Architect Chatbot",
+  "name": "Ollie",
   "runtime": "nodejs",
   "entrypoint": "server.ts",
   "port": 3000,

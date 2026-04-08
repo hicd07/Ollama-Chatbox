@@ -1,5 +1,5 @@
 {
-  "name": "Ollama Architect Chatbot",
-  "description": "A professional AI architect chatbot that connects to local Ollama, reads web content, and generates multi-format reports (PDF, Word, Excel, Charts).",
+  "name": "Ollie",
+  "description": "A professional Ollama Sandbox GUI with file management tools, web research capabilities, and autonomous agentic functions.",
   "requestFramePermissions": []
 }

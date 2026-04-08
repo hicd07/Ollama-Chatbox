@@ -188,13 +188,13 @@ export default function App() {
       // 2. System Instruction for Research, Disambiguation and File Generation
       const systemInstruction = {
         role: 'system',
-        content: "Eres Architect AI, un Agente de Investigación Avanzado y Generador de Documentos. " +
-                 "Tu objetivo es generar reportes precisos y profesionales. " +
+        content: "Eres Ollie, una GUI de Sandbox para Ollama con funciones agénticas avanzadas. " +
+                 "Tu objetivo es ser un asistente técnico, preciso y capaz de gestionar herramientas. " +
                  "REGLA DE DESAMBIGUACIÓN: Si recibes múltiples fuentes, valida que la información pertenezca a la misma persona. " +
                  "GENERACIÓN DE ARCHIVOS: Si el usuario te pide generar un archivo (PDF, Word, Excel, TXT, JSON), " +
                  "al final de tu respuesta DEBES incluir EXACTAMENTE este tag: [GENERATE_FILE:formato|nombre_archivo] " +
                  "donde formato es uno de: pdf, docx, xlsx, txt, json. " +
-                 "Ejemplo: [GENERATE_FILE:pdf|Reporte_Elon_Musk]. " +
+                 "Ejemplo: [GENERATE_FILE:pdf|Reporte_Analisis]. " +
                  "No menciones el tag en tu texto, solo ponlo al final."
       };
 
@@ -350,9 +350,9 @@ export default function App() {
               <div className="p-6 border-bottom border-[#141414]">
                 <div className="flex items-center gap-2 mb-6">
                   <div className="w-8 h-8 bg-[#141414] flex items-center justify-center rounded-sm">
-                    <Layers className="text-[#E4E3E0] w-5 h-5" />
+                    <Terminal className="text-[#E4E3E0] w-5 h-5" />
                   </div>
-                  <h1 className="font-mono font-bold tracking-tighter text-xl uppercase">Architect AI</h1>
+                  <h1 className="font-mono font-bold tracking-tighter text-xl uppercase">Ollie</h1>
                 </div>
 
                 <div className="space-y-4">
@@ -589,8 +589,8 @@ export default function App() {
                 <Settings className="w-5 h-5" />
               </Button>
               <div className="flex flex-col">
-                <span className="text-[10px] font-mono uppercase opacity-50">Sesión Actual</span>
-                <span className="text-xs font-bold uppercase tracking-widest">Architect_Workspace_01</span>
+                <span className="text-[10px] font-mono uppercase opacity-50">Sandbox Session</span>
+                <span className="text-xs font-bold uppercase tracking-widest">Ollie_Sandbox_v1</span>
               </div>
             </div>
 
@@ -614,10 +614,10 @@ export default function App() {
             <div className="max-w-4xl mx-auto space-y-8 pb-12">
               {messages.length === 0 && (
                 <div className="h-[60vh] flex flex-col items-center justify-center text-center space-y-4 opacity-30">
-                  <Layers className="w-16 h-16" />
+                  <Terminal className="w-16 h-16" />
                   <div className="max-w-md">
-                    <h2 className="text-2xl font-mono uppercase font-bold tracking-tighter">Ready for Architecture</h2>
-                    <p className="text-sm font-mono">Inicia una conversación para generar reportes, analizar datos o navegar la web con IA local.</p>
+                    <h2 className="text-2xl font-mono uppercase font-bold tracking-tighter">Ollie Sandbox</h2>
+                    <p className="text-sm font-mono">Entorno seguro para Ollama. Investiga la web, gestiona archivos y ejecuta tareas agénticas localmente.</p>
                   </div>
                 </div>
               )}
@@ -642,7 +642,7 @@ export default function App() {
                   <div className="flex-1 space-y-4 overflow-hidden">
                     <div className="flex items-center justify-between">
                       <span className="text-[10px] font-mono uppercase font-bold opacity-50">
-                        {msg.role === 'assistant' ? 'Architect AI' : 'User'} — {new Date(msg.timestamp).toLocaleTimeString()}
+                        {msg.role === 'assistant' ? 'Ollie' : 'User'} — {new Date(msg.timestamp).toLocaleTimeString()}
                       </span>
                       
                       {msg.role === 'assistant' && msg.content && (
