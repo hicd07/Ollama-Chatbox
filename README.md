@@ -1,42 +1,72 @@
-# Ollie - Ollama Sandbox GUI
+# Ollie: Advanced Ollama Sandbox & Agentic GUI
 
-Ollie es una interfaz profesional de Sandbox diseñada para ejecutarse localmente con Ollama, ofreciendo herramientas de gestión de archivos, investigación web y funciones agénticas autónomas.
+Ollie is a high-performance, professional-grade sandbox interface designed for local LLM orchestration using **Ollama**. It transcends simple chat interfaces by providing a robust environment for autonomous research, multi-format document generation, and external system integration.
 
-## Requisitos Previos
+## 🚀 Key Features
 
-1.  **Node.js**: Descarga e instala la versión LTS desde [nodejs.org](https://nodejs.org/).
-2.  **Ollama**: Descarga e instala Ollama desde [ollama.com](https://ollama.com/).
-    *   Una vez instalado, abre una terminal y descarga un modelo (ej: `ollama run llama3`).
+### 🧠 Personality Engine
+*   **Dynamic Profiles:** Create and manage multiple agent personalities with custom System Prompts.
+*   **Contextual Switching:** Seamlessly toggle between specialized profiles (e.g., Creative Writer, Senior Architect, Expert Coder) without losing session flow.
 
-## Pasos para Ejecutar la Aplicación
+### 🔌 Extensible Connectivity (MCP/REST)
+*   **Connector Management:** Integrate external REST APIs and MCP (Model Context Protocol) servers.
+*   **System Integration:** Bridge your local LLM with third-party databases and services, enabling a truly connected agentic experience.
 
-1.  **Descargar el Código**:
-    *   Usa el menú de configuración en AI Studio para exportar el proyecto como un archivo ZIP y extráelo en tu laptop.
+### 📚 Knowledge Base (RAG Ready)
+*   **Document Management:** Upload and manage local documents (PDF, TXT, etc.) to serve as a private knowledge repository.
+*   **Context Injection:** Enhance agent responses with specific, user-provided data sources.
 
-2.  **Instalar Dependencias**:
-    *   Abre una terminal (PowerShell o CMD) en la carpeta del proyecto.
-    *   Ejecuta el siguiente comando:
-        ```bash
-        npm install
-        ```
-    *   *Nota: Si ves errores de "Module not found", asegúrate de haber ejecutado este comando correctamente.*
-
-3.  **Iniciar la Aplicación**:
-    *   En la misma terminal, ejecuta:
-        ```bash
-        npm run dev
-        ```
-    *   Esto iniciará tanto el servidor backend como el frontend.
-
-4.  **Acceder al Chatbot**:
-    *   Abre tu navegador y ve a: `http://localhost:3000`
-
-## Notas Importantes
-
-*   **Servidor Ollama**: Asegúrate de que Ollama esté activo. Si el chatbot indica "Ollama Server Missing", verifica que el icono de Ollama aparezca en la barra de tareas de Windows.
-*   **Soporte CUDA (NVIDIA GPU)**: Este proyecto incluye configuración para **Antigravity** que solicita acceso a drivers NVIDIA. Asegúrate de tener instalados los drivers de NVIDIA y el **NVIDIA Container Toolkit** en tu máquina host para que Antigravity pueda pasar la GPU al contenedor. Verás un indicador de "CUDA ACTIVE" en la barra lateral cuando se detecte la aceleración.
-*   **Modelos**: Debes tener al menos un modelo descargado en Ollama para poder seleccionarlo en el chatbot.
-*   **Exportación**: Puedes usar los botones de descarga dentro del chat para generar reportes en PDF, Word o Excel directamente en tu equipo.
+### 🔍 Autonomous Research & Tools
+*   **Web Intelligence:** Real-time internet access for deep-dive research and information verification.
+*   **Multi-Format Export:** Generate professional reports in **PDF**, **Word**, **Excel**, **TXT**, and **JSON** with high-fidelity styling.
+*   **Hardware Control:** Granular control over GPU offloading, context length, and CPU threading.
 
 ---
-**Arquitectura Portable v1.0.4**
+
+## 🛠️ Prerequisites
+
+1.  **Ollama Server**: Must be installed and running. Download from [ollama.com](https://ollama.com/).
+    *   Ensure at least one model is pulled (e.g., `ollama pull llama3`).
+2.  **Node.js Runtime**: Version 20.x or higher (LTS recommended).
+3.  **NVIDIA GPU (Optional)**: For hardware acceleration, ensure NVIDIA drivers and the NVIDIA Container Toolkit are installed.
+
+---
+
+## 💻 Getting Started
+
+### 1. Installation
+Clone the repository or extract the exported ZIP, then install dependencies:
+```bash
+npm install
+```
+
+### 2. Development Mode
+Start the full-stack environment (Vite frontend + Node.js backend):
+```bash
+npm run dev
+```
+
+### 3. Access
+Navigate to `http://localhost:3000` in your preferred browser.
+
+---
+
+## 🏗️ Architecture Overview
+
+Ollie is built on a modern, reactive stack designed for low-latency local execution:
+
+*   **Frontend**: React 18+ with TypeScript, styled with Tailwind CSS and Shadcn UI.
+*   **State Management**: Framer Motion for fluid UI transitions and robust React hooks for local state.
+*   **Backend**: Express.js proxying requests to Ollama and handling agentic tool execution (Web Search, File I/O).
+*   **Export Engine**: Specialized utilities for high-fidelity document generation (`jspdf`, `docx`, `xlsx`).
+
+---
+
+## ⚠️ Important Notes
+
+*   **System Status**: Monitor the "Estado" tab in the sidebar to verify Ollama connectivity and CUDA status.
+*   **GPU Offloading**: Adjust the `GPU Offload` slider in "Configuraciones" to optimize performance based on your VRAM availability.
+*   **Internet Access**: The "Globe" icon in the chat input toggles real-time web search capabilities.
+
+---
+**Architectural Version: 1.1.0** | *Designed for Privacy, Performance, and Extensibility.*
