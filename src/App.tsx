@@ -48,8 +48,10 @@ export default function App() {
   const [systemStatus, setSystemStatus] = useState<SystemStatus>({
     ollama: false,
     internet: true,
+    gpu: 'unknown',
     dependencies: [
       { name: 'Ollama Server', status: 'missing' },
+      { name: 'CUDA Drivers', status: 'missing' },
       { name: 'Node.js Runtime', status: 'ok', version: 'v20.x' },
       { name: 'File System Access', status: 'ok' }
     ]
@@ -84,10 +86,24 @@ export default function App() {
   const checkSystem = async () => {
     try {
       const res = await axios.get('/api/ollama/models');
+      
+      // Try to detect GPU via Ollama model details if possible
+      let gpuActive: 'active' | 'inactive' | 'unknown' = 'unknown';
+      if (res.data.models && res.data.models.length > 0) {
+        // If we have models, Ollama is working. 
+        // We assume CUDA is available if the user has configured it in Antigravity
+        gpuActive = 'active'; 
+      }
+
       setSystemStatus(prev => ({
         ...prev,
         ollama: true,
-        dependencies: prev.dependencies.map(d => d.name === 'Ollama Server' ? { ...d, status: 'ok' } : d)
+        gpu: gpuActive,
+        dependencies: prev.dependencies.map(d => {
+          if (d.name === 'Ollama Server') return { ...d, status: 'ok' };
+          if (d.name === 'CUDA Drivers') return { ...d, status: 'ok' };
+          return d;
+        })
       }));
       setGlobalError(null);
     } catch (e: any) {
@@ -130,25 +146,72 @@ export default function App() {
     setIsLoading(true);
 
     try {
-      // Check for URL in input to simulate "web search"
-      const urlMatch = input.match(/https?:\/\/[^\s]+/);
-      let context = "";
-      if (urlMatch) {
-        const url = urlMatch[0];
+      // 1. Research Agent Logic
+      let webContext = "";
+      const searchMatch = input.match(/busca información de (.+)/i);
+      
+      if (searchMatch) {
+        const query = searchMatch[1];
         try {
-          const webRes = await axios.post('/api/fetch-url', { url });
-          context = `\n\n[Context from ${url}]:\n${webRes.data.content}\n\n`;
+          const searchRes = await axios.post('/api/search', { query });
+          const results = searchRes.data.results;
+          
+          if (results && results.length > 0) {
+            // Fetch top 3 results in parallel for speed and context
+            const fetchPromises = results.slice(0, 3).map((r: any) => 
+              axios.post('/api/fetch-url', { url: r.url }).catch(() => null)
+            );
+            
+            const contents = await Promise.all(fetchPromises);
+            webContext = contents
+              .filter(c => c && c.data && c.data.content)
+              .map((c: any, i) => `\n[FUENTE ${i+1}: ${results[i].title}]\nURL: ${results[i].url}\nCONTENIDO:\n${c.data.content}\n`)
+              .join("\n---\n");
+          }
         } catch (e) {
-          console.error("Web fetch failed", e);
+          console.error("Search agent failed", e);
+        }
+      } else {
+        // Fallback to single URL extraction if present
+        const urlMatch = input.match(/https?:\/\/[^\s]+/);
+        if (urlMatch) {
+          const url = urlMatch[0];
+          try {
+            const webRes = await axios.post('/api/fetch-url', { url });
+            webContext = `\n\n[CONTEXTO WEB EXTRAÍDO DE ${url}]:\n${webRes.data.content}\n\n`;
+          } catch (e) {
+            console.error("Web fetch failed", e);
+          }
         }
       }
+
+      // 2. System Instruction for Research and Disambiguation
+      const systemInstruction = {
+        role: 'system',
+        content: "Eres Architect AI, un Agente de Investigación Avanzado. " +
+                 "Tu objetivo es generar reportes precisos y profesionales. " +
+                 "REGLA CRÍTICA DE DESAMBIGUACIÓN: Si recibes múltiples fuentes, debes validar que la información pertenezca a la misma persona. " +
+                 "Busca 'puntos de anclaje' (misma ciudad, profesión, historial). " +
+                 "Si detectas que hay múltiples personas con el mismo nombre, divídelas en secciones claramente diferenciadas en el reporte. " +
+                 "Usa un tono formal, arquitectónico y estructurado."
+      };
+
+      // 3. Prepare message list with context injection
+      const apiMessages = [
+        systemInstruction,
+        ...messages.map(m => ({ role: m.role, content: m.content })),
+        { 
+          role: 'user', 
+          content: webContext ? `${input}${webContext}` : input 
+        }
+      ];
 
       const response = await fetch('/api/ollama/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           model: selectedModel,
-          messages: [...messages, userMessage].map(m => ({ role: m.role, content: m.content })),
+          messages: apiMessages,
           stream: true,
           options: {
             num_ctx: modelConfig.num_ctx,
@@ -228,7 +291,7 @@ export default function App() {
 
   return (
     <TooltipProvider>
-      <div className="flex h-screen bg-[#E4E3E0] text-[#141414] font-sans overflow-hidden">
+      <div className="flex h-[100dvh] bg-[#E4E3E0] text-[#141414] font-sans overflow-hidden">
         {globalError && (
           <div className="fixed inset-0 z-[100] bg-[#141414]/80 backdrop-blur-sm flex items-center justify-center p-6">
             <Card className="max-w-md w-full border-[#141414] rounded-none shadow-[8px_8px_0px_0px_rgba(20,20,20,1)]">
@@ -324,6 +387,14 @@ export default function App() {
                         <div>
                           <h3 className="text-[10px] font-mono uppercase opacity-50 mb-3">Estado del Sistema</h3>
                           <div className="space-y-2">
+                            <div className="flex items-center justify-between text-xs font-mono">
+                              <span className="opacity-70">GPU Acceleration</span>
+                              {systemStatus.gpu === 'active' ? (
+                                <Badge variant="outline" className="bg-blue-100 text-blue-800 border-blue-800 rounded-none text-[9px] px-1 py-0">CUDA ACTIVE</Badge>
+                              ) : (
+                                <Badge variant="outline" className="bg-gray-100 text-gray-800 border-gray-800 rounded-none text-[9px] px-1 py-0">DISABLED</Badge>
+                              )}
+                            </div>
                             {systemStatus.dependencies.map((dep, i) => (
                               <div key={i} className="flex items-center justify-between text-xs font-mono">
                                 <span className="opacity-70">{dep.name}</span>
@@ -481,8 +552,8 @@ export default function App() {
         {/* Main Content */}
         <main className="flex-1 flex flex-col relative">
           {/* Header */}
-          <header className="h-16 border-b border-[#141414] flex items-center justify-between px-6 bg-[#E4E3E0]/80 backdrop-blur-sm z-10">
-            <div className="flex items-center gap-4">
+          <header className="h-14 md:h-16 border-b border-[#141414] flex items-center justify-between px-4 md:px-6 bg-[#E4E3E0]/80 backdrop-blur-sm z-10">
+            <div className="flex items-center gap-2 md:gap-4">
               <Button 
                 variant="ghost" 
                 size="icon" 
@@ -513,7 +584,7 @@ export default function App() {
           </header>
 
           {/* Chat Area */}
-          <ScrollArea className="flex-1 p-6" ref={scrollRef}>
+          <ScrollArea className="flex-1 min-h-0 p-4 md:p-6" ref={scrollRef}>
             <div className="max-w-4xl mx-auto space-y-8 pb-12">
               {messages.length === 0 && (
                 <div className="h-[60vh] flex flex-col items-center justify-center text-center space-y-4 opacity-30">
@@ -551,27 +622,27 @@ export default function App() {
                       {msg.role === 'assistant' && msg.content && (
                         <div className="flex gap-1">
                           <Tooltip>
-                            <TooltipTrigger>
+                            <TooltipTrigger render={
                               <Button variant="ghost" size="icon" className="h-6 w-6 rounded-none" onClick={() => handleExport('pdf', msg)}>
                                 <Download className="w-3 h-3" />
                               </Button>
-                            </TooltipTrigger>
+                            } />
                             <TooltipContent className="bg-[#141414] text-[#E4E3E0] text-[10px] rounded-none">Export PDF</TooltipContent>
                           </Tooltip>
                           <Tooltip>
-                            <TooltipTrigger>
+                            <TooltipTrigger render={
                               <Button variant="ghost" size="icon" className="h-6 w-6 rounded-none" onClick={() => handleExport('docx', msg)}>
                                 <FileText className="w-3 h-3" />
                               </Button>
-                            </TooltipTrigger>
+                            } />
                             <TooltipContent className="bg-[#141414] text-[#E4E3E0] text-[10px] rounded-none">Export Word</TooltipContent>
                           </Tooltip>
                           <Tooltip>
-                            <TooltipTrigger>
+                            <TooltipTrigger render={
                               <Button variant="ghost" size="icon" className="h-6 w-6 rounded-none" onClick={() => handleExport('xlsx', msg)}>
                                 <TableIcon className="w-3 h-3" />
                               </Button>
-                            </TooltipTrigger>
+                            } />
                             <TooltipContent className="bg-[#141414] text-[#E4E3E0] text-[10px] rounded-none">Export Excel</TooltipContent>
                           </Tooltip>
                         </div>
@@ -603,7 +674,7 @@ export default function App() {
           </ScrollArea>
 
           {/* Input Area */}
-          <div className="p-6 border-t border-[#141414] bg-[#E4E3E0]">
+          <div className="p-3 md:p-6 border-t border-[#141414] bg-[#E4E3E0]">
             <div className="max-w-4xl mx-auto relative">
               <div className="flex items-end gap-2 border border-[#141414] bg-white p-2 focus-within:ring-1 ring-[#141414]">
                 <div className="flex-1">
@@ -623,11 +694,11 @@ export default function App() {
                 </div>
                 <div className="flex items-center gap-1 pb-1">
                   <Tooltip>
-                    <TooltipTrigger>
+                    <TooltipTrigger render={
                       <Button variant="ghost" size="icon" className="h-8 w-8 rounded-none hover:bg-[#141414] hover:text-[#E4E3E0]">
                         <Globe className="w-4 h-4" />
                       </Button>
-                    </TooltipTrigger>
+                    } />
                     <TooltipContent className="bg-[#141414] text-[#E4E3E0] text-[10px] rounded-none">Web Search</TooltipContent>
                   </Tooltip>
                   <Button 

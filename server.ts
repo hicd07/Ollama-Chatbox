@@ -46,25 +46,53 @@ async function startServer() {
     try {
       const response = await axios.get(url, {
         headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
         },
-        timeout: 10000
+        timeout: 15000
       });
       
       const $ = cheerio.load(response.data);
-      
-      // Remove script, style, and nav elements
-      $('script, style, nav, footer, header').remove();
+      $('script, style, nav, footer, header, noscript, iframe').remove();
       
       const html = $('body').html() || "";
       const markdown = NodeHtmlMarkdown.translate(html);
       
       res.json({ 
         title: $('title').text() || url,
-        content: markdown.slice(0, 15000) // Limit content size
+        content: markdown.slice(0, 10000) // Limit per source to allow multi-source
       });
     } catch (error: any) {
       res.status(500).json({ error: "Failed to fetch URL", message: error.message });
+    }
+  });
+
+  // Search Engine Proxy (DuckDuckGo HTML)
+  app.post("/api/search", async (req, res) => {
+    const { query } = req.body;
+    if (!query) return res.status(400).json({ error: "Query is required" });
+
+    try {
+      const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+      const response = await axios.get(searchUrl, {
+        headers: { 'User-Agent': 'Mozilla/5.0' }
+      });
+      
+      const $ = cheerio.load(response.data);
+      const results: { title: string, url: string, snippet: string }[] = [];
+      
+      $('.result').each((i, el) => {
+        if (i < 5) { // Top 5 results
+          const title = $(el).find('.result__title').text().trim();
+          const url = $(el).find('.result__url').text().trim();
+          const snippet = $(el).find('.result__snippet').text().trim();
+          if (title && url) results.push({ title, url: `https://${url}`, snippet });
+        }
+      });
+      
+      res.json({ results });
+    } catch (error: any) {
+      res.status(500).json({ error: "Search failed", message: error.message });
     }
   });
 

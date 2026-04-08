@@ -51,6 +51,23 @@
   @apply text-[#141414];
 }
 
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 10px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-[#E4E3E0] border-l border-[#141414];
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-[#141414] border-2 border-[#E4E3E0];
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-[#141414]/80;
+}
+
 .prose h1, .prose h2, .prose h3 {
   @apply font-mono uppercase tracking-tighter font-bold;
 }

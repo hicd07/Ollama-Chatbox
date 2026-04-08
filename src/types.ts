@@ -23,6 +23,7 @@ export interface OllamaModel {
 export interface SystemStatus {
   ollama: boolean;
   internet: boolean;
+  gpu: 'active' | 'inactive' | 'unknown';
   dependencies: {
     name: string;
     status: 'ok' | 'missing';

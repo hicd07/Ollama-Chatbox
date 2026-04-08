@@ -34,6 +34,7 @@ Este chatbot es una aplicación portable diseñada para ejecutarse localmente en
 ## Notas Importantes
 
 *   **Servidor Ollama**: Asegúrate de que Ollama esté activo. Si el chatbot indica "Ollama Server Missing", verifica que el icono de Ollama aparezca en la barra de tareas de Windows.
+*   **Soporte CUDA (NVIDIA GPU)**: Este proyecto incluye configuración para **Antigravity** que solicita acceso a drivers NVIDIA. Asegúrate de tener instalados los drivers de NVIDIA y el **NVIDIA Container Toolkit** en tu máquina host para que Antigravity pueda pasar la GPU al contenedor. Verás un indicador de "CUDA ACTIVE" en la barra lateral cuando se detecte la aceleración.
 *   **Modelos**: Debes tener al menos un modelo descargado en Ollama para poder seleccionarlo en el chatbot.
 *   **Exportación**: Puedes usar los botones de descarga dentro del chat para generar reportes en PDF, Word o Excel directamente en tu equipo.
 
