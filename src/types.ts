@@ -49,6 +49,13 @@ export interface KnowledgeDocument {
   uploadedAt: number;
 }
 
+export interface PersonalityProfile {
+  id: string;
+  name: string;
+  systemPrompt: string;
+  isDefault?: boolean;
+}
+
 export interface ModelConfig {
   num_ctx: number;
   num_gpu: number;

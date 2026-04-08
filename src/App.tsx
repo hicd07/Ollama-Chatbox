@@ -21,7 +21,11 @@ import {
   Database,
   FileUp,
   Activity,
-  ExternalLink
+  ExternalLink,
+  UserCircle,
+  Edit2,
+  Save,
+  Copy
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import axios from 'axios';
@@ -40,7 +44,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Switch } from "@/components/ui/switch";
 
-import { Message, OllamaModel, SystemStatus, ModelConfig, Connector, KnowledgeDocument } from './types';
+import { Message, OllamaModel, SystemStatus, ModelConfig, Connector, KnowledgeDocument, PersonalityProfile } from './types';
 import { exportToPDF, exportToWord, exportToExcel, exportToTXT, exportToJSON } from './lib/exportUtils';
 import { cn } from '@/lib/utils';
 import { Slider } from "@/components/ui/slider";
@@ -64,9 +68,29 @@ export default function App() {
   });
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [globalError, setGlobalError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'status' | 'config' | 'connectors'>('status');
+  const [activeTab, setActiveTab] = useState<'status' | 'config' | 'connectors' | 'personality'>('status');
   const [connectors, setConnectors] = useState<Connector[]>([]);
   const [knowledgeBase, setKnowledgeBase] = useState<KnowledgeDocument[]>([]);
+  const [personalityProfiles, setPersonalityProfiles] = useState<PersonalityProfile[]>([
+    {
+      id: 'default',
+      name: 'Ollie Estándar',
+      systemPrompt: "Eres Ollie, una GUI de Sandbox para Ollama con funciones agénticas avanzadas. Tu objetivo es ser un asistente técnico, preciso y capaz de gestionar herramientas. FORMATO DE RESPUESTA: Usa Markdown estándar (headers, bold, listas, tablas). REGLA CRÍTICA: NO uses símbolos extraños, prefijos decorativos o caracteres especiales antes de los títulos. GENERACIÓN DE ARCHIVOS: Si el usuario te pide generar un archivo (PDF, Word, Excel, TXT, JSON), al final de tu respuesta DEBES incluir EXACTAMENTE este tag: [GENERATE_FILE:formato|nombre_archivo] donde formato es uno de: pdf, docx, xlsx, txt, json. Ejemplo: [GENERATE_FILE:pdf|Reporte_Analisis]. No menciones el tag en tu texto, solo ponlo al final.",
+      isDefault: true
+    },
+    {
+      id: 'creative',
+      name: 'Escritor Creativo',
+      systemPrompt: "Eres un asistente de escritura creativa. Tu tono es inspirador, descriptivo y artístico. Ayudas al usuario a desarrollar historias, poemas y guiones con un lenguaje rico y evocador. Mantén las reglas de generación de archivos de Ollie si es necesario.",
+    },
+    {
+      id: 'coder',
+      name: 'Experto en Código',
+      systemPrompt: "Eres un ingeniero de software experto. Tus respuestas son concisas, enfocadas en el código y siguen las mejores prácticas. Siempre explicas el 'por qué' detrás de tus sugerencias de código. Mantén las reglas de generación de archivos de Ollie si es necesario.",
+    }
+  ]);
+  const [selectedProfileId, setSelectedProfileId] = useState<string>('default');
+  const [editingProfileId, setEditingProfileId] = useState<string | null>(null);
   const [modelConfig, setModelConfig] = useState<ModelConfig>({
     num_ctx: 4096,
     num_gpu: 35,
@@ -224,17 +248,11 @@ export default function App() {
         }
       }
 
+      // 2. System Instruction from Selected Personality Profile
+      const selectedProfile = personalityProfiles.find(p => p.id === selectedProfileId) || personalityProfiles[0];
       const systemInstruction = {
         role: 'system',
-        content: "Eres Ollie, una GUI de Sandbox para Ollama con funciones agénticas avanzadas. " +
-                 "Tu objetivo es ser un asistente técnico, preciso y capaz de gestionar herramientas. " +
-                 "FORMATO DE RESPUESTA: Usa Markdown estándar (headers, bold, listas, tablas). " +
-                 "REGLA CRÍTICA: NO uses símbolos extraños, prefijos decorativos o caracteres especiales antes de los títulos (ej: NO uses Ø=Ý). " +
-                 "GENERACIÓN DE ARCHIVOS: Si el usuario te pide generar un archivo (PDF, Word, Excel, TXT, JSON), " +
-                 "al final de tu respuesta DEBES incluir EXACTAMENTE este tag: [GENERATE_FILE:formato|nombre_archivo] " +
-                 "donde formato es uno de: pdf, docx, xlsx, txt, json. " +
-                 "Ejemplo: [GENERATE_FILE:pdf|Reporte_Analisis]. " +
-                 "No menciones el tag en tu texto, solo ponlo al final."
+        content: selectedProfile.systemPrompt
       };
 
       const apiMessages = [
@@ -446,6 +464,15 @@ export default function App() {
                     )}
                   >
                     Conectores
+                  </button>
+                  <button 
+                    onClick={() => setActiveTab('personality')}
+                    className={cn(
+                      "flex-1 py-2 font-mono text-[10px] uppercase transition-colors",
+                      activeTab === 'personality' ? "bg-[#141414] text-[#E4E3E0]" : "hover:bg-[#141414]/5"
+                    )}
+                  >
+                    Personalidad
                   </button>
                 </div>
                 
@@ -754,6 +781,120 @@ export default function App() {
                               </div>
                             </div>
                           </div>
+                        </div>
+                      </div>
+                    </ScrollArea>
+                  )}
+
+                  {activeTab === 'personality' && (
+                    <ScrollArea className="h-full p-6">
+                      <div className="space-y-6">
+                        <div className="flex items-center justify-between">
+                          <h3 className="text-[10px] font-mono uppercase opacity-50">Perfiles de Personalidad</h3>
+                          <Button 
+                            variant="outline" 
+                            size="icon" 
+                            className="h-6 w-6 border-[#141414] rounded-none"
+                            onClick={() => {
+                              const newProfile: PersonalityProfile = {
+                                id: Math.random().toString(36).substr(2, 9),
+                                name: 'Nueva Personalidad',
+                                systemPrompt: 'Eres un asistente útil...'
+                              };
+                              setPersonalityProfiles(prev => [...prev, newProfile]);
+                              setEditingProfileId(newProfile.id);
+                            }}
+                          >
+                            <Plus className="w-3 h-3" />
+                          </Button>
+                        </div>
+
+                        <div className="space-y-3">
+                          {personalityProfiles.map(profile => (
+                            <div 
+                              key={profile.id}
+                              className={cn(
+                                "border border-[#141414] transition-all",
+                                selectedProfileId === profile.id ? "bg-[#141414] text-[#E4E3E0]" : "bg-white/50"
+                              )}
+                            >
+                              <div className="p-3 flex items-center justify-between">
+                                <div 
+                                  className="flex-1 cursor-pointer"
+                                  onClick={() => setSelectedProfileId(profile.id)}
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <UserCircle className="w-4 h-4" />
+                                    <span className="text-[10px] font-bold uppercase">{profile.name}</span>
+                                    {profile.isDefault && (
+                                      <Badge variant="outline" className="text-[7px] rounded-none px-1 py-0 border-current opacity-50">DEFAULT</Badge>
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <Button 
+                                    variant="ghost" 
+                                    size="icon" 
+                                    className={cn("h-6 w-6 rounded-none", selectedProfileId === profile.id ? "text-[#E4E3E0] hover:bg-white/10" : "text-[#141414] hover:bg-[#141414]/5")}
+                                    onClick={() => setEditingProfileId(editingProfileId === profile.id ? null : profile.id)}
+                                  >
+                                    <Edit2 className="w-3 h-3" />
+                                  </Button>
+                                  {!profile.isDefault && (
+                                    <Button 
+                                      variant="ghost" 
+                                      size="icon" 
+                                      className={cn("h-6 w-6 rounded-none text-red-500", selectedProfileId === profile.id ? "hover:bg-white/10" : "hover:bg-[#141414]/5")}
+                                      onClick={() => {
+                                        if (selectedProfileId === profile.id) setSelectedProfileId('default');
+                                        setPersonalityProfiles(prev => prev.filter(p => p.id !== profile.id));
+                                      }}
+                                    >
+                                      <Trash2 className="w-3 h-3" />
+                                    </Button>
+                                  )}
+                                </div>
+                              </div>
+
+                              <AnimatePresence>
+                                {editingProfileId === profile.id && (
+                                  <motion.div 
+                                    initial={{ height: 0, opacity: 0 }}
+                                    animate={{ height: 'auto', opacity: 1 }}
+                                    exit={{ height: 0, opacity: 0 }}
+                                    className="px-3 pb-3 space-y-3 border-t border-[#141414]/20 pt-3"
+                                  >
+                                    <div className="space-y-1">
+                                      <label className="text-[8px] font-mono uppercase opacity-50">Nombre</label>
+                                      <Input 
+                                        value={profile.name}
+                                        onChange={(e) => {
+                                          setPersonalityProfiles(prev => prev.map(p => p.id === profile.id ? { ...p, name: e.target.value } : p));
+                                        }}
+                                        className="h-7 text-[10px] font-mono rounded-none border-[#141414] bg-transparent"
+                                      />
+                                    </div>
+                                    <div className="space-y-1">
+                                      <label className="text-[8px] font-mono uppercase opacity-50">System Prompt</label>
+                                      <textarea 
+                                        value={profile.systemPrompt}
+                                        onChange={(e) => {
+                                          setPersonalityProfiles(prev => prev.map(p => p.id === profile.id ? { ...p, systemPrompt: e.target.value } : p));
+                                        }}
+                                        className="w-full min-h-[100px] text-[10px] font-mono rounded-none border border-[#141414] bg-transparent p-2 focus:ring-0"
+                                      />
+                                    </div>
+                                    <Button 
+                                      className="w-full h-7 text-[8px] font-mono uppercase rounded-none bg-[#141414] text-[#E4E3E0]"
+                                      onClick={() => setEditingProfileId(null)}
+                                    >
+                                      <Save className="w-3 h-3 mr-2" /> Guardar Perfil
+                                    </Button>
+                                  </motion.div>
+                                )}
+                              </AnimatePresence>
+                            </div>
+                          ))}
                         </div>
                       </div>
                     </ScrollArea>
