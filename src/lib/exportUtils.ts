@@ -1,8 +1,11 @@
 import { jsPDF } from "jspdf";
 import "jspdf-autotable";
-import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType } from "docx";
+import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, Table, TableRow, TableCell, WidthType, BorderStyle } from "docx";
 import * as XLSX from "xlsx";
 import { marked } from "marked";
+
+// Helper to strip markdown from a string for simple text runs
+const stripMd = (text: string) => text.replace(/(\*\*|__)(.*?)\1/g, '$2').replace(/(\*|_)(.*?)\1/g, '$2');
 
 export const exportToPDF = (title: string, content: string) => {
   const doc = new jsPDF();
@@ -11,43 +14,73 @@ export const exportToPDF = (title: string, content: string) => {
   const contentWidth = pageWidth - (margin * 2);
   let y = 20;
 
+  const checkPage = (needed: number) => {
+    if (y + needed > 280) {
+      doc.addPage();
+      y = 20;
+      return true;
+    }
+    return false;
+  };
+
   // Title
   doc.setFont("helvetica", "bold");
   doc.setFontSize(22);
   doc.text(title, margin, y);
   y += 15;
 
-  // Simple Markdown Parser for PDF
-  const lines = content.split('\n');
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(11);
+  const tokens = marked.lexer(content);
 
-  lines.forEach(line => {
-    if (y > 280) {
-      doc.addPage();
-      y = 20;
-    }
-
-    if (line.startsWith('# ')) {
+  tokens.forEach((token: any) => {
+    if (token.type === 'heading') {
+      const sizes = [20, 18, 16, 14, 12, 11];
+      const size = sizes[token.depth - 1] || 11;
+      checkPage(size + 5);
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(16);
-      doc.text(line.replace('# ', ''), margin, y);
+      doc.setFontSize(size);
+      const lines = doc.splitTextToSize(token.text, contentWidth);
+      doc.text(lines, margin, y);
+      y += (lines.length * (size * 0.5)) + 5;
+    } else if (token.type === 'paragraph') {
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(11);
+      const cleanText = stripMd(token.text);
+      const lines = doc.splitTextToSize(cleanText, contentWidth);
+      checkPage(lines.length * 6 + 5);
+      doc.text(lines, margin, y);
+      y += (lines.length * 6) + 5;
+    } else if (token.type === 'list') {
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(11);
+      token.items.forEach((item: any) => {
+        const cleanText = `• ${stripMd(item.text)}`;
+        const lines = doc.splitTextToSize(cleanText, contentWidth);
+        checkPage(lines.length * 6 + 2);
+        doc.text(lines, margin, y);
+        y += (lines.length * 6) + 2;
+      });
+      y += 3;
+    } else if (token.type === 'table') {
+      const headers = token.header.map((h: any) => h.text);
+      const rows = token.rows.map((row: any) => row.map((c: any) => c.text));
+      
+      (doc as any).autoTable({
+        head: [headers],
+        body: rows,
+        startY: y,
+        margin: { left: margin },
+        theme: 'grid',
+        headStyles: { fillColor: [20, 20, 20] },
+        didDrawPage: (data: any) => {
+          y = data.cursor.y + 10;
+        }
+      });
+      y = (doc as any).lastAutoTable.finalY + 10;
+    } else if (token.type === 'hr') {
+      checkPage(5);
+      doc.setDrawColor(200);
+      doc.line(margin, y, pageWidth - margin, y);
       y += 10;
-      doc.setFontSize(11);
-      doc.setFont("helvetica", "normal");
-    } else if (line.startsWith('## ')) {
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(14);
-      doc.text(line.replace('## ', ''), margin, y);
-      y += 8;
-      doc.setFontSize(11);
-      doc.setFont("helvetica", "normal");
-    } else if (line.trim() === '') {
-      y += 5;
-    } else {
-      const splitText = doc.splitTextToSize(line, contentWidth);
-      doc.text(splitText, margin, y);
-      y += (splitText.length * 6);
     }
   });
 
@@ -58,7 +91,6 @@ export const exportToWord = async (title: string, content: string) => {
   const tokens = marked.lexer(content);
   const children: any[] = [];
 
-  // Add Title
   children.push(
     new Paragraph({
       text: title,
@@ -68,7 +100,6 @@ export const exportToWord = async (title: string, content: string) => {
     })
   );
 
-  // Parse Markdown Tokens
   tokens.forEach((token: any) => {
     if (token.type === 'heading') {
       const levels = [HeadingLevel.HEADING_1, HeadingLevel.HEADING_2, HeadingLevel.HEADING_3, HeadingLevel.HEADING_4, HeadingLevel.HEADING_5, HeadingLevel.HEADING_6];
@@ -80,14 +111,9 @@ export const exportToWord = async (title: string, content: string) => {
         })
       );
     } else if (token.type === 'paragraph') {
-      const textRuns: TextRun[] = [];
-      
-      // Handle simple inline formatting (bold/italic)
-      // Note: marked tokens for paragraphs can have nested tokens if using recursive parsing, 
-      // but for simplicity we'll handle the text.
       children.push(
         new Paragraph({
-          children: [new TextRun({ text: token.text, size: 24 })],
+          children: [new TextRun({ text: stripMd(token.text), size: 22 })],
           spacing: { after: 200 },
         })
       );
@@ -95,22 +121,46 @@ export const exportToWord = async (title: string, content: string) => {
       token.items.forEach((item: any) => {
         children.push(
           new Paragraph({
-            text: item.text,
+            text: stripMd(item.text),
             bullet: { level: 0 },
             spacing: { after: 120 },
           })
         );
       });
-    } else if (token.type === 'space') {
-      // Skip
+    } else if (token.type === 'table') {
+      const tableRows = [
+        new TableRow({
+          children: token.header.map((h: any) => new TableCell({
+            children: [new Paragraph({ children: [new TextRun({ text: h.text, bold: true })] })],
+            shading: { fill: "F2F2F2" }
+          }))
+        }),
+        ...token.rows.map((row: any) => new TableRow({
+          children: row.map((c: any) => new TableCell({
+            children: [new Paragraph({ text: c.text })]
+          }))
+        }))
+      ];
+
+      children.push(
+        new Table({
+          rows: tableRows,
+          width: { size: 100, type: WidthType.PERCENTAGE },
+          borders: {
+            top: { style: BorderStyle.SINGLE, size: 1 },
+            bottom: { style: BorderStyle.SINGLE, size: 1 },
+            left: { style: BorderStyle.SINGLE, size: 1 },
+            right: { style: BorderStyle.SINGLE, size: 1 },
+          }
+        })
+      );
+    } else if (token.type === 'hr') {
+      children.push(new Paragraph({ border: { bottom: { color: "auto", space: 1, style: BorderStyle.SINGLE, size: 6 } } }));
     }
   });
 
   const doc = new Document({
-    sections: [{
-      properties: {},
-      children: children,
-    }],
+    sections: [{ children }],
   });
 
   const blob = await Packer.toBlob(doc);
