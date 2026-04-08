@@ -1,72 +1,72 @@
-# Ollie: Advanced Ollama Sandbox & Agentic GUI
+# Ollie: Sandbox Avanzado y GUI Agéntica para Ollama
 
-Ollie is a high-performance, professional-grade sandbox interface designed for local LLM orchestration using **Ollama**. It transcends simple chat interfaces by providing a robust environment for autonomous research, multi-format document generation, and external system integration.
+Ollie es una interfaz de sandbox profesional y de alto rendimiento diseñada para la orquestación de LLMs locales mediante **Ollama**. Va más allá de las interfaces de chat simples, proporcionando un entorno robusto para la investigación autónoma, generación de documentos en múltiples formatos e integración con sistemas externos.
 
-## 🚀 Key Features
+## 🚀 Características Clave
 
-### 🧠 Personality Engine
-*   **Dynamic Profiles:** Create and manage multiple agent personalities with custom System Prompts.
-*   **Contextual Switching:** Seamlessly toggle between specialized profiles (e.g., Creative Writer, Senior Architect, Expert Coder) without losing session flow.
+### 🧠 Motor de Personalidad
+*   **Perfiles Dinámicos:** Crea y gestiona múltiples personalidades de agentes con *System Prompts* personalizados.
+*   **Cambio Contextual:** Alterna sin problemas entre perfiles especializados (ej. Escritor Creativo, Arquitecto Senior, Experto en Código) sin perder el flujo de la sesión.
 
-### 🔌 Extensible Connectivity (MCP/REST)
-*   **Connector Management:** Integrate external REST APIs and MCP (Model Context Protocol) servers.
-*   **System Integration:** Bridge your local LLM with third-party databases and services, enabling a truly connected agentic experience.
+### 🔌 Conectividad Extensible (MCP/REST)
+*   **Gestión de Conectores:** Integra APIs REST externas y servidores MCP (*Model Context Protocol*).
+*   **Integración de Sistemas:** Conecta tu LLM local con bases de datos y servicios de terceros, permitiendo una experiencia agéntica verdaderamente conectada.
 
-### 📚 Knowledge Base (RAG Ready)
-*   **Document Management:** Upload and manage local documents (PDF, TXT, etc.) to serve as a private knowledge repository.
-*   **Context Injection:** Enhance agent responses with specific, user-provided data sources.
+### 📚 Base de Conocimientos (Listo para RAG)
+*   **Gestión de Documentos:** Sube y gestiona documentos locales (PDF, TXT, etc.) para que sirvan como un repositorio de conocimiento privado.
+*   **Inyección de Contexto:** Mejora las respuestas del agente con fuentes de datos específicas proporcionadas por el usuario.
 
-### 🔍 Autonomous Research & Tools
-*   **Web Intelligence:** Real-time internet access for deep-dive research and information verification.
-*   **Multi-Format Export:** Generate professional reports in **PDF**, **Word**, **Excel**, **TXT**, and **JSON** with high-fidelity styling.
-*   **Hardware Control:** Granular control over GPU offloading, context length, and CPU threading.
-
----
-
-## 🛠️ Prerequisites
-
-1.  **Ollama Server**: Must be installed and running. Download from [ollama.com](https://ollama.com/).
-    *   Ensure at least one model is pulled (e.g., `ollama pull llama3`).
-2.  **Node.js Runtime**: Version 20.x or higher (LTS recommended).
-3.  **NVIDIA GPU (Optional)**: For hardware acceleration, ensure NVIDIA drivers and the NVIDIA Container Toolkit are installed.
+### 🔍 Investigación Autónoma y Herramientas
+*   **Inteligencia Web:** Acceso a internet en tiempo real para investigaciones profundas y verificación de información.
+*   **Exportación Multiformato:** Genera reportes profesionales en **PDF**, **Word**, **Excel**, **TXT** y **JSON** con estilos de alta fidelidad.
+*   **Control de Hardware:** Control granular sobre la descarga a GPU (*offloading*), longitud de contexto y subprocesos de CPU.
 
 ---
 
-## 💻 Getting Started
+## 🛠️ Requisitos Previos
 
-### 1. Installation
-Clone the repository or extract the exported ZIP, then install dependencies:
+1.  **Servidor Ollama**: Debe estar instalado y en ejecución. Descárgalo en [ollama.com](https://ollama.com/).
+    *   Asegúrate de haber descargado al menos un modelo (ej: `ollama pull llama3`).
+2.  **Entorno Node.js**: Versión 20.x o superior (se recomienda LTS).
+3.  **GPU NVIDIA (Opcional)**: Para aceleración por hardware, asegúrate de tener instalados los controladores de NVIDIA y el NVIDIA Container Toolkit.
+
+---
+
+## 💻 Primeros Pasos
+
+### 1. Instalación
+Clona el repositorio o extrae el archivo ZIP exportado, luego instala las dependencias:
 ```bash
 npm install
 ```
 
-### 2. Development Mode
-Start the full-stack environment (Vite frontend + Node.js backend):
+### 2. Modo de Desarrollo
+Inicia el entorno full-stack (frontend Vite + backend Node.js):
 ```bash
 npm run dev
 ```
 
-### 3. Access
-Navigate to `http://localhost:3000` in your preferred browser.
+### 3. Acceso
+Navega a `http://localhost:3000` en tu navegador preferido.
 
 ---
 
-## 🏗️ Architecture Overview
+## 🏗️ Resumen de la Arquitectura
 
-Ollie is built on a modern, reactive stack designed for low-latency local execution:
+Ollie está construido sobre un stack moderno y reactivo diseñado para una ejecución local de baja latencia:
 
-*   **Frontend**: React 18+ with TypeScript, styled with Tailwind CSS and Shadcn UI.
-*   **State Management**: Framer Motion for fluid UI transitions and robust React hooks for local state.
-*   **Backend**: Express.js proxying requests to Ollama and handling agentic tool execution (Web Search, File I/O).
-*   **Export Engine**: Specialized utilities for high-fidelity document generation (`jspdf`, `docx`, `xlsx`).
-
----
-
-## ⚠️ Important Notes
-
-*   **System Status**: Monitor the "Estado" tab in the sidebar to verify Ollama connectivity and CUDA status.
-*   **GPU Offloading**: Adjust the `GPU Offload` slider in "Configuraciones" to optimize performance based on your VRAM availability.
-*   **Internet Access**: The "Globe" icon in the chat input toggles real-time web search capabilities.
+*   **Frontend**: React 18+ con TypeScript, estilizado con Tailwind CSS y Shadcn UI.
+*   **Gestión de Estado**: Framer Motion para transiciones fluidas de la interfaz y hooks de React robustos para el estado local.
+*   **Backend**: Proxy de Express.js que redirige las solicitudes a Ollama y maneja la ejecución de herramientas agénticas (Búsqueda Web, E/S de Archivos).
+*   **Motor de Exportación**: Utilidades especializadas para la generación de documentos de alta fidelidad (`jspdf`, `docx`, `xlsx`).
 
 ---
-**Architectural Version: 1.1.0** | *Designed for Privacy, Performance, and Extensibility.*
+
+## ⚠️ Notas Importantes
+
+*   **Estado del Sistema**: Monitorea la pestaña "Estado" en la barra lateral para verificar la conectividad de Ollama y el estado de CUDA.
+*   **Descarga a GPU**: Ajusta el control deslizante "GPU Offload" en "Configuraciones" para optimizar el rendimiento según tu VRAM disponible.
+*   **Acceso a Internet**: El icono del "Globo" en la entrada de chat activa las capacidades de búsqueda web en tiempo real.
+
+---
+**Versión Arquitectónica: 1.1.0** | *Diseñado para la Privacidad, el Rendimiento y la Extensibilidad.*
