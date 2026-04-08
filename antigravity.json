@@ -1,0 +1,15 @@
+{
+  "name": "Ollama Architect Chatbot",
+  "runtime": "nodejs",
+  "entrypoint": "server.ts",
+  "port": 3000,
+  "scripts": {
+    "dev": "npm run dev",
+    "start": "npm start",
+    "build": "npm run build"
+  },
+  "env": {
+    "NODE_ENV": "development",
+    "PORT": "3000"
+  }
+}
