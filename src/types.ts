@@ -31,6 +31,24 @@ export interface SystemStatus {
   }[];
 }
 
+export interface Connector {
+  id: string;
+  name: string;
+  type: 'rest' | 'mcp';
+  url: string;
+  status: 'active' | 'inactive' | 'error';
+  lastChecked?: number;
+}
+
+export interface KnowledgeDocument {
+  id: string;
+  name: string;
+  type: string;
+  size: number;
+  content: string;
+  uploadedAt: number;
+}
+
 export interface ModelConfig {
   num_ctx: number;
   num_gpu: number;
@@ -40,4 +58,6 @@ export interface ModelConfig {
   top_p: number;
   repeat_penalty: number;
   seed: number;
+  internet_access: boolean;
+  hardware_acceleration: boolean;
 }

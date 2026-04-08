@@ -16,7 +16,12 @@ import {
   Layers,
   Search,
   Plus,
-  Trash2
+  Trash2,
+  Link,
+  Database,
+  FileUp,
+  Activity,
+  ExternalLink
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import axios from 'axios';
@@ -33,8 +38,9 @@ import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Switch } from "@/components/ui/switch";
 
-import { Message, OllamaModel, SystemStatus, ModelConfig } from './types';
+import { Message, OllamaModel, SystemStatus, ModelConfig, Connector, KnowledgeDocument } from './types';
 import { exportToPDF, exportToWord, exportToExcel, exportToTXT, exportToJSON } from './lib/exportUtils';
 import { cn } from '@/lib/utils';
 import { Slider } from "@/components/ui/slider";
@@ -58,7 +64,9 @@ export default function App() {
   });
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [globalError, setGlobalError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'status' | 'config'>('status');
+  const [activeTab, setActiveTab] = useState<'status' | 'config' | 'connectors'>('status');
+  const [connectors, setConnectors] = useState<Connector[]>([]);
+  const [knowledgeBase, setKnowledgeBase] = useState<KnowledgeDocument[]>([]);
   const [modelConfig, setModelConfig] = useState<ModelConfig>({
     num_ctx: 4096,
     num_gpu: 35,
@@ -67,7 +75,9 @@ export default function App() {
     top_k: 40,
     top_p: 0.9,
     repeat_penalty: 1.1,
-    seed: 42
+    seed: 42,
+    internet_access: true,
+    hardware_acceleration: true
   });
   
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -87,11 +97,8 @@ export default function App() {
     try {
       const res = await axios.get('/api/ollama/models');
       
-      // Try to detect GPU via Ollama model details if possible
       let gpuActive: 'active' | 'inactive' | 'unknown' = 'unknown';
       if (res.data.models && res.data.models.length > 0) {
-        // If we have models, Ollama is working. 
-        // We assume CUDA is available if the user has configured it in Antigravity
         gpuActive = 'active'; 
       }
 
@@ -132,6 +139,41 @@ export default function App() {
     }
   };
 
+  const addConnector = (name: string, type: 'rest' | 'mcp', url: string) => {
+    const newConnector: Connector = {
+      id: Math.random().toString(36).substr(2, 9),
+      name,
+      type,
+      url,
+      status: 'inactive'
+    };
+    setConnectors(prev => [...prev, newConnector]);
+  };
+
+  const removeConnector = (id: string) => {
+    setConnectors(prev => prev.filter(c => c.id !== id));
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const content = event.target?.result as string;
+      const newDoc: KnowledgeDocument = {
+        id: Math.random().toString(36).substr(2, 9),
+        name: file.name,
+        type: file.type,
+        size: file.size,
+        content: content,
+        uploadedAt: Date.now()
+      };
+      setKnowledgeBase(prev => [...prev, newDoc]);
+    };
+    reader.readAsText(file);
+  };
+
   const handleSend = async () => {
     if (!input.trim() || !selectedModel || isLoading) return;
 
@@ -146,18 +188,16 @@ export default function App() {
     setIsLoading(true);
 
     try {
-      // 1. Research Agent Logic
       let webContext = "";
       const searchMatch = input.match(/busca información de (.+)/i);
       
-      if (searchMatch) {
+      if (searchMatch && modelConfig.internet_access) {
         const query = searchMatch[1];
         try {
           const searchRes = await axios.post('/api/search', { query });
           const results = searchRes.data.results;
           
           if (results && results.length > 0) {
-            // Fetch top 3 results in parallel for speed and context
             const fetchPromises = results.slice(0, 3).map((r: any) => 
               axios.post('/api/fetch-url', { url: r.url }).catch(() => null)
             );
@@ -171,8 +211,7 @@ export default function App() {
         } catch (e) {
           console.error("Search agent failed", e);
         }
-      } else {
-        // Fallback to single URL extraction if present
+      } else if (modelConfig.internet_access) {
         const urlMatch = input.match(/https?:\/\/[^\s]+/);
         if (urlMatch) {
           const url = urlMatch[0];
@@ -185,7 +224,6 @@ export default function App() {
         }
       }
 
-      // 2. System Instruction for Research, Disambiguation and File Generation
       const systemInstruction = {
         role: 'system',
         content: "Eres Ollie, una GUI de Sandbox para Ollama con funciones agénticas avanzadas. " +
@@ -199,7 +237,6 @@ export default function App() {
                  "No menciones el tag en tu texto, solo ponlo al final."
       };
 
-      // 3. Prepare message list with context injection
       const apiMessages = [
         systemInstruction,
         ...messages.map(m => ({ role: m.role, content: m.content })),
@@ -218,7 +255,7 @@ export default function App() {
           stream: true,
           options: {
             num_ctx: modelConfig.num_ctx,
-            num_gpu: modelConfig.num_gpu,
+            num_gpu: modelConfig.hardware_acceleration ? modelConfig.num_gpu : 0,
             num_thread: modelConfig.num_thread,
             temperature: modelConfig.temperature,
             top_k: modelConfig.top_k,
@@ -268,20 +305,17 @@ export default function App() {
         }
       }
 
-      // 4. Post-processing for Autonomous File Generation
       const fileTagMatch = assistantContent.match(/\[GENERATE_FILE:(pdf|docx|xlsx|txt|json)\|([^\]]+)\]/);
       if (fileTagMatch) {
         const [fullTag, format, filename] = fileTagMatch;
         const cleanContent = assistantContent.replace(fullTag, "").trim();
         
-        // Update UI to remove the tag
         setMessages(prev => {
           const newMessages = [...prev];
           newMessages[newMessages.length - 1].content = cleanContent;
           return newMessages;
         });
 
-        // Trigger download
         const exportMsg: Message = { role: 'assistant', content: cleanContent, timestamp: Date.now() };
         switch (format) {
           case 'pdf': exportToPDF(filename, cleanContent); break;
@@ -310,7 +344,6 @@ export default function App() {
       case 'docx': exportToWord(title, msg.content); break;
       case 'txt': exportToTXT(title, msg.content); break;
       case 'xlsx': 
-        // Simple extraction of tables from markdown could be added here
         exportToExcel(title, [{ content: msg.content }]); 
         break;
     }
@@ -403,12 +436,21 @@ export default function App() {
                       activeTab === 'config' ? "bg-[#141414] text-[#E4E3E0]" : "hover:bg-[#141414]/5"
                     )}
                   >
-                    Config
+                    Configuraciones
+                  </button>
+                  <button 
+                    onClick={() => setActiveTab('connectors')}
+                    className={cn(
+                      "flex-1 py-2 font-mono text-[10px] uppercase transition-colors",
+                      activeTab === 'connectors' ? "bg-[#141414] text-[#E4E3E0]" : "hover:bg-[#141414]/5"
+                    )}
+                  >
+                    Conectores
                   </button>
                 </div>
                 
                 <div className="flex-1 overflow-hidden">
-                  {activeTab === 'status' ? (
+                  {activeTab === 'status' && (
                     <ScrollArea className="h-full p-6">
                       <div className="space-y-6">
                         <div>
@@ -416,10 +458,18 @@ export default function App() {
                           <div className="space-y-2">
                             <div className="flex items-center justify-between text-xs font-mono">
                               <span className="opacity-70">GPU Acceleration</span>
-                              {systemStatus.gpu === 'active' ? (
+                              {modelConfig.hardware_acceleration && systemStatus.gpu === 'active' ? (
                                 <Badge variant="outline" className="bg-blue-100 text-blue-800 border-blue-800 rounded-none text-[9px] px-1 py-0">CUDA ACTIVE</Badge>
                               ) : (
                                 <Badge variant="outline" className="bg-gray-100 text-gray-800 border-gray-800 rounded-none text-[9px] px-1 py-0">DISABLED</Badge>
+                              )}
+                            </div>
+                            <div className="flex items-center justify-between text-xs font-mono">
+                              <span className="opacity-70">Internet Access</span>
+                              {modelConfig.internet_access ? (
+                                <Badge variant="outline" className="bg-green-100 text-green-800 border-green-800 rounded-none text-[9px] px-1 py-0">ENABLED</Badge>
+                              ) : (
+                                <Badge variant="outline" className="bg-red-100 text-red-800 border-red-800 rounded-none text-[9px] px-1 py-0">OFFLINE</Badge>
                               )}
                             </div>
                             {systemStatus.dependencies.map((dep, i) => (
@@ -463,101 +513,246 @@ export default function App() {
                         </div>
                       </div>
                     </ScrollArea>
-                  ) : (
+                  )}
+
+                  {activeTab === 'config' && (
                     <ScrollArea className="h-full p-6">
                       <div className="space-y-6">
                         <div className="space-y-4">
-                          <div className="space-y-2">
-                            <div className="flex justify-between items-center">
-                              <label className="text-[10px] font-mono uppercase opacity-50">Context Length</label>
-                              <span className="text-[10px] font-mono font-bold">{modelConfig.num_ctx}</span>
+                          <div 
+                            className={cn(
+                              "flex items-center justify-between p-3 border border-[#141414] transition-all cursor-pointer",
+                              modelConfig.internet_access 
+                                ? "bg-[#141414] text-[#E4E3E0]" 
+                                : "bg-white/50 text-[#141414] hover:bg-white/80"
+                            )}
+                            onClick={() => setModelConfig(prev => ({ ...prev, internet_access: !prev.internet_access }))}
+                          >
+                            <div className="flex flex-col gap-0.5">
+                              <span className="text-[10px] font-mono font-bold uppercase">Internet Access</span>
+                              <span className={cn(
+                                "text-[8px] font-mono",
+                                modelConfig.internet_access ? "opacity-70" : "opacity-50"
+                              )}>Permitir búsqueda web</span>
                             </div>
-                            <Slider 
-                              value={[modelConfig.num_ctx]} 
-                              min={512} max={32768} step={512}
-                              onValueChange={(v) => setModelConfig(prev => ({ ...prev, num_ctx: Array.isArray(v) ? v[0] : v }))}
-                              className="[&_[role=slider]]:bg-[#141414] [&_[role=slider]]:border-[#141414]"
+                            <Switch 
+                              checked={modelConfig.internet_access} 
+                              onCheckedChange={(v) => setModelConfig(prev => ({ ...prev, internet_access: v }))}
+                              className={cn(
+                                "data-[state=checked]:bg-[#E4E3E0] data-[state=checked]:border-[#E4E3E0]",
+                                !modelConfig.internet_access && "data-[state=unchecked]:bg-[#141414]/20"
+                              )}
+                              onClick={(e) => e.stopPropagation()}
                             />
                           </div>
 
-                          <div className="space-y-2">
-                            <div className="flex justify-between items-center">
-                              <label className="text-[10px] font-mono uppercase opacity-50">GPU Offload (Layers)</label>
-                              <span className="text-[10px] font-mono font-bold">{modelConfig.num_gpu}</span>
+                          <div 
+                            className={cn(
+                              "flex items-center justify-between p-3 border border-[#141414] transition-all cursor-pointer",
+                              modelConfig.hardware_acceleration 
+                                ? "bg-[#141414] text-[#E4E3E0]" 
+                                : "bg-white/50 text-[#141414] hover:bg-white/80"
+                            )}
+                            onClick={() => setModelConfig(prev => ({ ...prev, hardware_acceleration: !prev.hardware_acceleration }))}
+                          >
+                            <div className="flex flex-col gap-0.5">
+                              <span className="text-[10px] font-mono font-bold uppercase">Hardware Acceleration</span>
+                              <span className={cn(
+                                "text-[8px] font-mono",
+                                modelConfig.hardware_acceleration ? "opacity-70" : "opacity-50"
+                              )}>Usar GPU si está disponible</span>
                             </div>
-                            <Slider 
-                              value={[modelConfig.num_gpu]} 
-                              min={0} max={100} step={1}
-                              onValueChange={(v) => setModelConfig(prev => ({ ...prev, num_gpu: Array.isArray(v) ? v[0] : v }))}
-                              className="[&_[role=slider]]:bg-[#141414] [&_[role=slider]]:border-[#141414]"
-                            />
-                          </div>
-
-                          <div className="space-y-2">
-                            <div className="flex justify-between items-center">
-                              <label className="text-[10px] font-mono uppercase opacity-50">CPU Threads</label>
-                              <span className="text-[10px] font-mono font-bold">{modelConfig.num_thread}</span>
-                            </div>
-                            <Slider 
-                              value={[modelConfig.num_thread]} 
-                              min={1} max={32} step={1}
-                              onValueChange={(v) => setModelConfig(prev => ({ ...prev, num_thread: Array.isArray(v) ? v[0] : v }))}
-                              className="[&_[role=slider]]:bg-[#141414] [&_[role=slider]]:border-[#141414]"
+                            <Switch 
+                              checked={modelConfig.hardware_acceleration} 
+                              onCheckedChange={(v) => setModelConfig(prev => ({ ...prev, hardware_acceleration: v }))}
+                              className={cn(
+                                "data-[state=checked]:bg-[#E4E3E0] data-[state=checked]:border-[#E4E3E0]",
+                                !modelConfig.hardware_acceleration && "data-[state=unchecked]:bg-[#141414]/20"
+                              )}
+                              onClick={(e) => e.stopPropagation()}
                             />
                           </div>
 
                           <Separator className="bg-[#141414]/10" />
 
-                          <div className="space-y-2">
-                            <div className="flex justify-between items-center">
-                              <label className="text-[10px] font-mono uppercase opacity-50">Temperature</label>
-                              <span className="text-[10px] font-mono font-bold">{modelConfig.temperature}</span>
+                          <div className="space-y-4">
+                            <div className="space-y-2">
+                              <div className="flex justify-between items-center">
+                                <label className="text-[10px] font-mono uppercase opacity-50">Context Length</label>
+                                <span className="text-[10px] font-mono font-bold">{modelConfig.num_ctx}</span>
+                              </div>
+                              <Slider 
+                                value={[modelConfig.num_ctx]} 
+                                min={512} max={32768} step={512}
+                                onValueChange={(v) => setModelConfig(prev => ({ ...prev, num_ctx: Array.isArray(v) ? v[0] : v }))}
+                                className="[&_[role=slider]]:bg-[#141414] [&_[role=slider]]:border-[#141414]"
+                              />
                             </div>
-                            <Slider 
-                              value={[modelConfig.temperature]} 
-                              min={0} max={2} step={0.1}
-                              onValueChange={(v) => setModelConfig(prev => ({ ...prev, temperature: Array.isArray(v) ? v[0] : v }))}
-                              className="[&_[role=slider]]:bg-[#141414] [&_[role=slider]]:border-[#141414]"
-                            />
+
+                            <div className="space-y-2">
+                              <div className="flex justify-between items-center">
+                                <label className="text-[10px] font-mono uppercase opacity-50">GPU Offload (Layers)</label>
+                                <span className="text-[10px] font-mono font-bold">{modelConfig.num_gpu}</span>
+                              </div>
+                              <Slider 
+                                value={[modelConfig.num_gpu]} 
+                                min={0} max={100} step={1}
+                                onValueChange={(v) => setModelConfig(prev => ({ ...prev, num_gpu: Array.isArray(v) ? v[0] : v }))}
+                                className="[&_[role=slider]]:bg-[#141414] [&_[role=slider]]:border-[#141414]"
+                              />
+                            </div>
+
+                            <div className="space-y-2">
+                              <div className="flex justify-between items-center">
+                                <label className="text-[10px] font-mono uppercase opacity-50">CPU Threads</label>
+                                <span className="text-[10px] font-mono font-bold">{modelConfig.num_thread}</span>
+                              </div>
+                              <Slider 
+                                value={[modelConfig.num_thread]} 
+                                min={1} max={32} step={1}
+                                onValueChange={(v) => setModelConfig(prev => ({ ...prev, num_thread: Array.isArray(v) ? v[0] : v }))}
+                                className="[&_[role=slider]]:bg-[#141414] [&_[role=slider]]:border-[#141414]"
+                              />
+                            </div>
+
+                            <Separator className="bg-[#141414]/10" />
+
+                            <div className="space-y-2">
+                              <div className="flex justify-between items-center">
+                                <label className="text-[10px] font-mono uppercase opacity-50">Temperature</label>
+                                <span className="text-[10px] font-mono font-bold">{modelConfig.temperature}</span>
+                              </div>
+                              <Slider 
+                                value={[modelConfig.temperature]} 
+                                min={0} max={2} step={0.1}
+                                onValueChange={(v) => setModelConfig(prev => ({ ...prev, temperature: Array.isArray(v) ? v[0] : v }))}
+                                className="[&_[role=slider]]:bg-[#141414] [&_[role=slider]]:border-[#141414]"
+                              />
+                            </div>
+
+                            <div className="space-y-2">
+                              <div className="flex justify-between items-center">
+                                <label className="text-[10px] font-mono uppercase opacity-50">Top P</label>
+                                <span className="text-[10px] font-mono font-bold">{modelConfig.top_p}</span>
+                              </div>
+                              <Slider 
+                                value={[modelConfig.top_p]} 
+                                min={0} max={1} step={0.05}
+                                onValueChange={(v) => setModelConfig(prev => ({ ...prev, top_p: Array.isArray(v) ? v[0] : v }))}
+                                className="[&_[role=slider]]:bg-[#141414] [&_[role=slider]]:border-[#141414]"
+                              />
+                            </div>
+
+                            <div className="space-y-2">
+                              <div className="flex justify-between items-center">
+                                <label className="text-[10px] font-mono uppercase opacity-50">Top K</label>
+                                <span className="text-[10px] font-mono font-bold">{modelConfig.top_k}</span>
+                              </div>
+                              <Slider 
+                                value={[modelConfig.top_k]} 
+                                min={1} max={100} step={1}
+                                onValueChange={(v) => setModelConfig(prev => ({ ...prev, top_k: Array.isArray(v) ? v[0] : v }))}
+                                className="[&_[role=slider]]:bg-[#141414] [&_[role=slider]]:border-[#141414]"
+                              />
+                            </div>
+
+                            <div className="space-y-2">
+                              <div className="flex justify-between items-center">
+                                <label className="text-[10px] font-mono uppercase opacity-50">Repeat Penalty</label>
+                                <span className="text-[10px] font-mono font-bold">{modelConfig.repeat_penalty}</span>
+                              </div>
+                              <Slider 
+                                value={[modelConfig.repeat_penalty]} 
+                                min={1} max={2} step={0.1}
+                                onValueChange={(v) => setModelConfig(prev => ({ ...prev, repeat_penalty: Array.isArray(v) ? v[0] : v }))}
+                                className="[&_[role=slider]]:bg-[#141414] [&_[role=slider]]:border-[#141414]"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </ScrollArea>
+                  )}
+
+                  {activeTab === 'connectors' && (
+                    <ScrollArea className="h-full p-6">
+                      <div className="space-y-6">
+                        <div className="space-y-4">
+                          <div className="flex flex-col gap-2">
+                            <h3 className="text-[10px] font-mono uppercase opacity-50">Servidores MCP / API</h3>
+                            <div className="space-y-2">
+                              {connectors.map(c => (
+                                <div key={c.id} className="p-3 border border-[#141414] bg-white/50 flex items-center justify-between">
+                                  <div className="flex flex-col">
+                                    <span className="text-[10px] font-bold uppercase">{c.name}</span>
+                                    <span className="text-[8px] font-mono opacity-50 truncate max-w-[150px]">{c.url}</span>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <Badge variant="outline" className="text-[8px] rounded-none px-1 py-0">
+                                      {c.type.toUpperCase()}
+                                    </Badge>
+                                    <Button 
+                                      variant="ghost" 
+                                      size="icon" 
+                                      className="h-6 w-6 text-red-600"
+                                      onClick={() => removeConnector(c.id)}
+                                    >
+                                      <Trash2 className="w-3 h-3" />
+                                    </Button>
+                                  </div>
+                                </div>
+                              ))}
+                              
+                              <Button 
+                                variant="outline" 
+                                className="w-full border-dashed border-[#141414] rounded-none font-mono text-[10px] uppercase h-8"
+                                onClick={() => {
+                                  const name = prompt("Nombre del conector:");
+                                  const url = prompt("URL del endpoint:");
+                                  if (name && url) addConnector(name, 'rest', url);
+                                }}
+                              >
+                                <Plus className="w-3 h-3 mr-2" /> Nuevo Conector
+                              </Button>
+                            </div>
                           </div>
 
-                          <div className="space-y-2">
-                            <div className="flex justify-between items-center">
-                              <label className="text-[10px] font-mono uppercase opacity-50">Top P</label>
-                              <span className="text-[10px] font-mono font-bold">{modelConfig.top_p}</span>
-                            </div>
-                            <Slider 
-                              value={[modelConfig.top_p]} 
-                              min={0} max={1} step={0.05}
-                              onValueChange={(v) => setModelConfig(prev => ({ ...prev, top_p: Array.isArray(v) ? v[0] : v }))}
-                              className="[&_[role=slider]]:bg-[#141414] [&_[role=slider]]:border-[#141414]"
-                            />
-                          </div>
+                          <Separator className="bg-[#141414]/10" />
 
-                          <div className="space-y-2">
-                            <div className="flex justify-between items-center">
-                              <label className="text-[10px] font-mono uppercase opacity-50">Top K</label>
-                              <span className="text-[10px] font-mono font-bold">{modelConfig.top_k}</span>
+                          <div className="flex flex-col gap-2">
+                            <h3 className="text-[10px] font-mono uppercase opacity-50">Base de Conocimientos</h3>
+                            <div className="space-y-2">
+                              {knowledgeBase.map(doc => (
+                                <div key={doc.id} className="p-3 border border-[#141414] bg-white/50 flex items-center justify-between">
+                                  <div className="flex items-center gap-2 overflow-hidden">
+                                    <FileText className="w-3 h-3 shrink-0" />
+                                    <span className="text-[10px] font-mono truncate">{doc.name}</span>
+                                  </div>
+                                  <Button 
+                                    variant="ghost" 
+                                    size="icon" 
+                                    className="h-6 w-6 text-red-600"
+                                    onClick={() => setKnowledgeBase(prev => prev.filter(d => d.id !== doc.id))}
+                                  >
+                                    <Trash2 className="w-3 h-3" />
+                                  </Button>
+                                </div>
+                              ))}
+                              
+                              <div className="relative">
+                                <Input 
+                                  type="file" 
+                                  className="absolute inset-0 opacity-0 cursor-pointer z-10" 
+                                  onChange={handleFileUpload}
+                                />
+                                <Button 
+                                  variant="outline" 
+                                  className="w-full border-dashed border-[#141414] rounded-none font-mono text-[10px] uppercase h-8"
+                                >
+                                  <FileUp className="w-3 h-3 mr-2" /> Adjuntar Documento
+                                </Button>
+                              </div>
                             </div>
-                            <Slider 
-                              value={[modelConfig.top_k]} 
-                              min={1} max={100} step={1}
-                              onValueChange={(v) => setModelConfig(prev => ({ ...prev, top_k: Array.isArray(v) ? v[0] : v }))}
-                              className="[&_[role=slider]]:bg-[#141414] [&_[role=slider]]:border-[#141414]"
-                            />
-                          </div>
-
-                          <div className="space-y-2">
-                            <div className="flex justify-between items-center">
-                              <label className="text-[10px] font-mono uppercase opacity-50">Repeat Penalty</label>
-                              <span className="text-[10px] font-mono font-bold">{modelConfig.repeat_penalty}</span>
-                            </div>
-                            <Slider 
-                              value={[modelConfig.repeat_penalty]} 
-                              min={1} max={2} step={0.1}
-                              onValueChange={(v) => setModelConfig(prev => ({ ...prev, repeat_penalty: Array.isArray(v) ? v[0] : v }))}
-                              className="[&_[role=slider]]:bg-[#141414] [&_[role=slider]]:border-[#141414]"
-                            />
                           </div>
                         </div>
                       </div>
@@ -722,11 +917,21 @@ export default function App() {
                 <div className="flex items-center gap-1 pb-1">
                   <Tooltip>
                     <TooltipTrigger render={
-                      <Button variant="ghost" size="icon" className="h-8 w-8 rounded-none hover:bg-[#141414] hover:text-[#E4E3E0]">
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className={cn(
+                          "h-8 w-8 rounded-none transition-colors",
+                          modelConfig.internet_access ? "hover:bg-[#141414] hover:text-[#E4E3E0]" : "opacity-30 cursor-not-allowed"
+                        )}
+                        onClick={() => setModelConfig(prev => ({ ...prev, internet_access: !prev.internet_access }))}
+                      >
                         <Globe className="w-4 h-4" />
                       </Button>
                     } />
-                    <TooltipContent className="bg-[#141414] text-[#E4E3E0] text-[10px] rounded-none">Web Search</TooltipContent>
+                    <TooltipContent className="bg-[#141414] text-[#E4E3E0] text-[10px] rounded-none">
+                      {modelConfig.internet_access ? "Internet Access: ON" : "Internet Access: OFF"}
+                    </TooltipContent>
                   </Tooltip>
                   <Button 
                     size="icon" 
@@ -749,4 +954,3 @@ export default function App() {
     </TooltipProvider>
   );
 }
-
