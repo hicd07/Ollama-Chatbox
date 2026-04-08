@@ -67,4 +67,5 @@ export interface ModelConfig {
   seed: number;
   internet_access: boolean;
   hardware_acceleration: boolean;
+  ollama_url: string;
 }

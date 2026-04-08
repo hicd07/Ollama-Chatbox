@@ -101,7 +101,8 @@ export default function App() {
     repeat_penalty: 1.1,
     seed: 42,
     internet_access: true,
-    hardware_acceleration: true
+    hardware_acceleration: true,
+    ollama_url: 'http://localhost:11434'
   });
   
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -119,7 +120,9 @@ export default function App() {
 
   const checkSystem = async () => {
     try {
-      const res = await axios.get('/api/ollama/models');
+      const res = await axios.get('/api/ollama/models', {
+        params: { url: modelConfig.ollama_url }
+      });
       
       let gpuActive: 'active' | 'inactive' | 'unknown' = 'unknown';
       if (res.data.models && res.data.models.length > 0) {
@@ -153,7 +156,9 @@ export default function App() {
 
   const fetchModels = async () => {
     try {
-      const res = await axios.get('/api/ollama/models');
+      const res = await axios.get('/api/ollama/models', {
+        params: { url: modelConfig.ollama_url }
+      });
       setModels(res.data.models || []);
       if (res.data.models?.length > 0 && !selectedModel) {
         setSelectedModel(res.data.models[0].name);
@@ -268,6 +273,7 @@ export default function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          ollama_url: modelConfig.ollama_url,
           model: selectedModel,
           messages: apiMessages,
           stream: true,
@@ -546,6 +552,32 @@ export default function App() {
                     <ScrollArea className="h-full p-6">
                       <div className="space-y-6">
                         <div className="space-y-4">
+                          <div className="space-y-2">
+                            <label className="text-[10px] font-mono uppercase opacity-50">Ollama API URL</label>
+                            <div className="flex gap-2">
+                              <Input 
+                                value={modelConfig.ollama_url}
+                                onChange={(e) => setModelConfig(prev => ({ ...prev, ollama_url: e.target.value }))}
+                                placeholder="http://localhost:11434"
+                                className="h-8 text-[10px] font-mono rounded-none border-[#141414] bg-white/50"
+                              />
+                              <Button 
+                                variant="outline" 
+                                size="icon" 
+                                className="h-8 w-8 border-[#141414] rounded-none shrink-0"
+                                onClick={() => {
+                                  checkSystem();
+                                  fetchModels();
+                                }}
+                              >
+                                <RefreshCw className="w-3 h-3" />
+                              </Button>
+                            </div>
+                            <p className="text-[8px] font-mono opacity-50 italic">Por defecto: http://localhost:11434</p>
+                          </div>
+
+                          <Separator className="bg-[#141414]/10" />
+
                           <div 
                             className={cn(
                               "flex items-center justify-between p-3 border border-[#141414] transition-all cursor-pointer",

@@ -19,8 +19,9 @@ async function startServer() {
   
   // Proxy to Ollama (to handle CORS and provide a single endpoint)
   app.get("/api/ollama/models", async (req, res) => {
+    const ollamaUrl = (req.query.url as string) || "http://localhost:11434";
     try {
-      const response = await axios.get("http://localhost:11434/api/tags", { timeout: 2000 });
+      const response = await axios.get(`${ollamaUrl}/api/tags`, { timeout: 3000 });
       res.json(response.data);
     } catch (error: any) {
       res.status(503).json({ error: "Ollama not reachable", message: error.message });
@@ -28,8 +29,10 @@ async function startServer() {
   });
 
   app.post("/api/ollama/chat", async (req, res) => {
+    const { ollama_url, ...ollamaBody } = req.body;
+    const targetUrl = ollama_url || "http://localhost:11434";
     try {
-      const response = await axios.post("http://localhost:11434/api/chat", req.body, {
+      const response = await axios.post(`${targetUrl}/api/chat`, ollamaBody, {
         responseType: 'stream'
       });
       response.data.pipe(res);
