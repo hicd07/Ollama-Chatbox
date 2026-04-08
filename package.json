@@ -27,6 +27,7 @@
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.7",
     "lucide-react": "^0.546.0",
+    "marked": "^18.0.0",
     "motion": "^12.38.0",
     "node-html-markdown": "^2.0.0",
     "react": "^19.0.0",
