@@ -35,7 +35,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 import { Message, OllamaModel, SystemStatus, ModelConfig } from './types';
-import { exportToPDF, exportToWord, exportToExcel, exportToTXT } from './lib/exportUtils';
+import { exportToPDF, exportToWord, exportToExcel, exportToTXT, exportToJSON } from './lib/exportUtils';
 import { cn } from '@/lib/utils';
 import { Slider } from "@/components/ui/slider";
 
@@ -185,15 +185,17 @@ export default function App() {
         }
       }
 
-      // 2. System Instruction for Research and Disambiguation
+      // 2. System Instruction for Research, Disambiguation and File Generation
       const systemInstruction = {
         role: 'system',
-        content: "Eres Architect AI, un Agente de Investigación Avanzado. " +
+        content: "Eres Architect AI, un Agente de Investigación Avanzado y Generador de Documentos. " +
                  "Tu objetivo es generar reportes precisos y profesionales. " +
-                 "REGLA CRÍTICA DE DESAMBIGUACIÓN: Si recibes múltiples fuentes, debes validar que la información pertenezca a la misma persona. " +
-                 "Busca 'puntos de anclaje' (misma ciudad, profesión, historial). " +
-                 "Si detectas que hay múltiples personas con el mismo nombre, divídelas en secciones claramente diferenciadas en el reporte. " +
-                 "Usa un tono formal, arquitectónico y estructurado."
+                 "REGLA DE DESAMBIGUACIÓN: Si recibes múltiples fuentes, valida que la información pertenezca a la misma persona. " +
+                 "GENERACIÓN DE ARCHIVOS: Si el usuario te pide generar un archivo (PDF, Word, Excel, TXT, JSON), " +
+                 "al final de tu respuesta DEBES incluir EXACTAMENTE este tag: [GENERATE_FILE:formato|nombre_archivo] " +
+                 "donde formato es uno de: pdf, docx, xlsx, txt, json. " +
+                 "Ejemplo: [GENERATE_FILE:pdf|Reporte_Elon_Musk]. " +
+                 "No menciones el tag en tu texto, solo ponlo al final."
       };
 
       // 3. Prepare message list with context injection
@@ -262,6 +264,30 @@ export default function App() {
           } catch (e) {
             // Partial JSON or other error
           }
+        }
+      }
+
+      // 4. Post-processing for Autonomous File Generation
+      const fileTagMatch = assistantContent.match(/\[GENERATE_FILE:(pdf|docx|xlsx|txt|json)\|([^\]]+)\]/);
+      if (fileTagMatch) {
+        const [fullTag, format, filename] = fileTagMatch;
+        const cleanContent = assistantContent.replace(fullTag, "").trim();
+        
+        // Update UI to remove the tag
+        setMessages(prev => {
+          const newMessages = [...prev];
+          newMessages[newMessages.length - 1].content = cleanContent;
+          return newMessages;
+        });
+
+        // Trigger download
+        const exportMsg: Message = { role: 'assistant', content: cleanContent, timestamp: Date.now() };
+        switch (format) {
+          case 'pdf': exportToPDF(filename, cleanContent); break;
+          case 'docx': exportToWord(filename, cleanContent); break;
+          case 'txt': exportToTXT(filename, cleanContent); break;
+          case 'json': exportToJSON(filename, cleanContent); break;
+          case 'xlsx': exportToExcel(filename, [{ content: cleanContent }]); break;
         }
       }
     } catch (error) {

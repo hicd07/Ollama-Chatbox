@@ -64,3 +64,24 @@ export const exportToTXT = (title: string, content: string) => {
   link.download = `${title.replace(/\s+/g, '_')}.txt`;
   link.click();
 };
+
+export const exportToJSON = (title: string, content: string) => {
+  try {
+    // Try to parse if it's already a stringified JSON, otherwise wrap it
+    let jsonContent;
+    try {
+      jsonContent = JSON.parse(content);
+    } catch {
+      jsonContent = { content, generatedAt: new Date().toISOString() };
+    }
+    
+    const blob = new Blob([JSON.stringify(jsonContent, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${title.replace(/\s+/g, '_')}.json`;
+    link.click();
+  } catch (e) {
+    console.error("JSON Export failed", e);
+  }
+};
