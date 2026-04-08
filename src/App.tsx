@@ -25,7 +25,9 @@ import {
   UserCircle,
   Edit2,
   Save,
-  Copy
+  Copy,
+  Paperclip,
+  X
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import axios from 'axios';
@@ -52,6 +54,7 @@ import { Slider } from "@/components/ui/slider";
 export default function App() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
+  const [attachedFiles, setAttachedFiles] = useState<{ name: string, content: string, type: string }[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [models, setModels] = useState<OllamaModel[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>('');
@@ -207,16 +210,23 @@ export default function App() {
   };
 
   const handleSend = async () => {
-    if (!input.trim() || !selectedModel || isLoading) return;
+    if ((!input.trim() && attachedFiles.length === 0) || !selectedModel || isLoading) return;
+
+    let finalInput = input;
+    if (attachedFiles.length > 0) {
+      const fileContext = attachedFiles.map(f => `[ARCHIVO ADJUNTO: ${f.name}]\nCONTENIDO:\n${f.content}`).join("\n\n");
+      finalInput = `${input}\n\n${fileContext}`;
+    }
 
     const userMessage: Message = {
       role: 'user',
-      content: input,
+      content: input + (attachedFiles.length > 0 ? `\n\n(Adjuntos: ${attachedFiles.map(f => f.name).join(", ")})` : ""),
       timestamp: Date.now()
     };
 
     setMessages(prev => [...prev, userMessage]);
     setInput('');
+    setAttachedFiles([]);
     setIsLoading(true);
 
     try {
@@ -274,7 +284,7 @@ export default function App() {
         ...messages.map(m => ({ role: m.role, content: m.content })),
         { 
           role: 'user', 
-          content: webContext ? `${input}${webContext}` : input 
+          content: webContext ? `${finalInput}${webContext}` : finalInput 
         }
       ];
 
@@ -392,6 +402,29 @@ export default function App() {
         exportToExcel(title, [{ content: msg.content }]); 
         break;
     }
+  };
+
+  const handleFileAttach = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+
+    Array.from(files).forEach(file => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const content = event.target?.result as string;
+        setAttachedFiles(prev => [...prev, { 
+          name: file.name, 
+          content: content, 
+          type: file.type 
+        }]);
+      };
+      reader.readAsText(file);
+    });
+    e.target.value = '';
+  };
+
+  const removeAttachedFile = (index: number) => {
+    setAttachedFiles(prev => prev.filter((_, i) => i !== index));
   };
 
   return (
@@ -1210,6 +1243,22 @@ export default function App() {
           {/* Input Area */}
           <div className="p-3 md:p-6 border-t border-[#141414] bg-[#E4E3E0]">
             <div className="max-w-4xl mx-auto relative">
+              {attachedFiles.length > 0 && (
+                <div className="mb-2 flex flex-wrap gap-2">
+                  {attachedFiles.map((file, idx) => (
+                    <div key={idx} className="flex items-center gap-2 bg-white border border-[#141414] px-2 py-1 text-[10px] font-mono">
+                      <FileText className="w-3 h-3" />
+                      <span className="max-w-[150px] truncate">{file.name}</span>
+                      <button 
+                        onClick={() => removeAttachedFile(idx)}
+                        className="hover:text-red-500 transition-colors"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
               <div className="flex items-end gap-2 border border-[#141414] bg-white p-2 focus-within:ring-1 ring-[#141414]">
                 <div className="flex-1">
                   <textarea
@@ -1227,6 +1276,28 @@ export default function App() {
                   />
                 </div>
                 <div className="flex items-center gap-1 pb-1">
+                  <input 
+                    type="file" 
+                    id="file-upload" 
+                    className="hidden" 
+                    multiple 
+                    onChange={handleFileAttach}
+                  />
+                  <Tooltip>
+                    <TooltipTrigger render={
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className="h-8 w-8 rounded-none hover:bg-[#141414] hover:text-[#E4E3E0] transition-colors"
+                        onClick={() => document.getElementById('file-upload')?.click()}
+                      >
+                        <Paperclip className="w-4 h-4" />
+                      </Button>
+                    } />
+                    <TooltipContent className="bg-[#141414] text-[#E4E3E0] text-[10px] rounded-none">
+                      Adjuntar Archivos
+                    </TooltipContent>
+                  </Tooltip>
                   <Tooltip>
                     <TooltipTrigger render={
                       <Button 
@@ -1249,7 +1320,7 @@ export default function App() {
                     size="icon" 
                     className="h-8 w-8 bg-[#141414] text-[#E4E3E0] hover:bg-[#141414]/90 rounded-none"
                     onClick={handleSend}
-                    disabled={isLoading || !input.trim()}
+                    disabled={isLoading || (!input.trim() && attachedFiles.length === 0)}
                   >
                     <Send className="w-4 h-4" />
                   </Button>
