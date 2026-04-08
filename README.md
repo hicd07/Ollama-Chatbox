@@ -28,14 +28,16 @@ Ollie es una interfaz de sandbox profesional y de alto rendimiento diseñada par
 1.  **Servidor Ollama**: Debe estar instalado y en ejecución. Descárgalo en [ollama.com](https://ollama.com/).
     *   Asegúrate de haber descargado al menos un modelo (ej: `ollama pull llama3`).
 2.  **Entorno Node.js**: Versión 20.x o superior (se recomienda LTS).
-3.  **GPU NVIDIA (Opcional)**: Para aceleración por hardware, asegúrate de tener instalados los controladores de NVIDIA y el NVIDIA Container Toolkit.
+3.  **Aceleración por Hardware (Opcional)**:
+    *   **Windows/Linux (NVIDIA)**: Asegúrate de tener instalados los controladores de NVIDIA y el NVIDIA Container Toolkit.
+    *   **macOS (Apple Silicon)**: Ollama utiliza automáticamente Metal para la aceleración en chips M1/M2/M3. No se requiere configuración adicional.
 
 ---
 
 ## 💻 Primeros Pasos
 
 ### 1. Instalación
-Clona el repositorio o extrae el archivo ZIP exportado, luego instala las dependencias:
+Extrae el archivo ZIP exportado o clona el repositorio, luego abre una terminal en la carpeta del proyecto e instala las dependencias:
 ```bash
 npm install
 ```
@@ -48,6 +50,14 @@ npm run dev
 
 ### 3. Acceso
 Navega a `http://localhost:3000` en tu navegador preferido.
+
+---
+
+## 🐧 Notas para Linux y macOS
+
+*   **Linux**: Si encuentras problemas de permisos al intentar acceder al servidor de Ollama, asegúrate de que el servicio de Ollama esté corriendo (`systemctl status ollama`) y que tu usuario tenga los permisos necesarios.
+*   **macOS**: En computadoras Mac con procesadores Intel, el rendimiento puede ser significativamente menor que en modelos con Apple Silicon (M1/M2/M3).
+*   **Puertos**: La aplicación utiliza el puerto `3000` por defecto. Asegúrate de que no esté siendo utilizado por otro servicio (`lsof -i :3000` en Mac/Linux).
 
 ---
 
