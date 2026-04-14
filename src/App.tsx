@@ -48,6 +48,8 @@ import { Switch } from "@/components/ui/switch";
 
 import { Message, OllamaModel, SystemStatus, ModelConfig, Connector, KnowledgeDocument, PersonalityProfile } from './types';
 import { exportToPDF, exportToWord, exportToExcel, exportToTXT, exportToJSON } from './lib/exportUtils';
+import { ToolConfig } from '@/components/ToolConfig';
+import { PersonalityConfig } from '@/components/PersonalityConfig';
 import { cn } from '@/lib/utils';
 import { Slider } from "@/components/ui/slider";
 
@@ -108,7 +110,26 @@ export default function App() {
     ollama_url: 'http://localhost:11434',
     show_metrics: true,
     fs_read_access: false,
-    fs_write_access: false
+    fs_write_access: false,
+    tools: {
+      web_search: true,
+      file_system: false,
+      calculator: true,
+      image_generation: false,
+      wikipedia: true,
+      python_repl: false,
+      arxiv: false,
+      youtube_search: false,
+      csv_analyzer: true,
+      wolfram_alpha: false,
+      gmail: false,
+      calendar: false,
+      slack: false,
+      mcp: false,
+      custom_api: false
+    },
+    mcp_server_url: '',
+    custom_api_url: ''
   });
   
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -230,42 +251,6 @@ export default function App() {
     setIsLoading(true);
 
     try {
-      let webContext = "";
-      const searchMatch = input.match(/busca información de (.+)/i);
-      
-      if (searchMatch && modelConfig.internet_access) {
-        const query = searchMatch[1];
-        try {
-          const searchRes = await axios.post('/api/search', { query });
-          const results = searchRes.data.results;
-          
-          if (results && results.length > 0) {
-            const fetchPromises = results.slice(0, 3).map((r: any) => 
-              axios.post('/api/fetch-url', { url: r.url }).catch(() => null)
-            );
-            
-            const contents = await Promise.all(fetchPromises);
-            webContext = contents
-              .filter(c => c && c.data && c.data.content)
-              .map((c: any, i) => `\n[FUENTE ${i+1}: ${results[i].title}]\nURL: ${results[i].url}\nCONTENIDO:\n${c.data.content}\n`)
-              .join("\n---\n");
-          }
-        } catch (e) {
-          console.error("Search agent failed", e);
-        }
-      } else if (modelConfig.internet_access) {
-        const urlMatch = input.match(/https?:\/\/[^\s]+/);
-        if (urlMatch) {
-          const url = urlMatch[0];
-          try {
-            const webRes = await axios.post('/api/fetch-url', { url });
-            webContext = `\n\n[CONTEXTO WEB EXTRAÍDO DE ${url}]:\n${webRes.data.content}\n\n`;
-          } catch (e) {
-            console.error("Web fetch failed", e);
-          }
-        }
-      }
-
       // 2. System Instruction from Selected Personality Profile
       const selectedProfile = personalityProfiles.find(p => p.id === selectedProfileId) || personalityProfiles[0];
       
@@ -276,7 +261,19 @@ export default function App() {
       
       const systemInstruction = {
         role: 'system',
-        content: selectedProfile.systemPrompt + permissionInfo
+        content: selectedProfile.systemPrompt + permissionInfo + `
+\nINSTRUCCIONES DE HERRAMIENTAS:
+1. Usa 'web_search' para encontrar enlaces y 'browser' para leer el contenido de esos enlaces.
+2. Usa 'wikipedia' para datos históricos o biográficos rápidos.
+3. Usa 'knowledge_base' para buscar en los archivos que el usuario ha subido.
+4. Usa 'python_repl' para cálculos complejos, lógica o procesamiento de datos.
+5. Usa 'arxiv' para buscar papers científicos y 'youtube_search' para videos.
+6. Usa 'data_analyzer' si el usuario sube un archivo CSV o Excel y necesita analizarlo.
+7. Usa 'wolfram_alpha' para cálculos científicos o datos de conocimiento real complejos.
+8. Usa 'gmail_tool' para enviar correos, 'calendar_tool' para eventos y 'slack_tool' para mensajes.
+9. Usa 'mcp_connector' para conectar con servidores externos de herramientas y 'custom_api' para endpoints específicos.
+10. Usa 'file_system' para guardar reportes o archivos permanentemente en el servidor.
+11. Si el usuario te pide algo sobre sus archivos, SIEMPRE consulta primero 'knowledge_base'.`
       };
 
       const apiMessages = [
@@ -284,28 +281,24 @@ export default function App() {
         ...messages.map(m => ({ role: m.role, content: m.content })),
         { 
           role: 'user', 
-          content: webContext ? `${finalInput}${webContext}` : finalInput 
+          content: finalInput 
         }
       ];
 
-      const response = await fetch('/api/ollama/chat', {
+      const response = await fetch('/api/agent/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ollama_url: modelConfig.ollama_url,
           model: selectedModel,
           messages: apiMessages,
-          stream: true,
-          options: {
-            num_ctx: modelConfig.num_ctx,
-            num_gpu: modelConfig.hardware_acceleration ? modelConfig.num_gpu : 0,
-            num_thread: modelConfig.num_thread,
-            temperature: modelConfig.temperature,
-            top_k: modelConfig.top_k,
-            top_p: modelConfig.top_p,
-            repeat_penalty: modelConfig.repeat_penalty,
-            seed: modelConfig.seed
-          }
+          config: modelConfig,
+          // Optimizamos el envío: truncamos contenido masivo para evitar errores de payload
+          knowledge_base: knowledgeBase.map(doc => ({
+            name: doc.name,
+            type: doc.type,
+            content: doc.content.length > 30000 ? doc.content.slice(0, 30000) + "... [TRUNCADO]" : doc.content
+          }))
         })
       });
 
@@ -334,28 +327,23 @@ export default function App() {
           if (!line.trim()) continue;
           try {
             const json = JSON.parse(line);
-            if (json.message?.content) {
-              assistantContent += json.message.content;
+            if (json.message?.content || json.message?.tool_calls) {
+              assistantContent = json.message.content || "";
+              const toolCalls = json.message.tool_calls;
               setMessages(prev => {
                 const newMessages = [...prev];
-                newMessages[newMessages.length - 1].content = assistantContent;
+                const lastMsg = newMessages[newMessages.length - 1];
+                lastMsg.content = assistantContent;
+                lastMsg.tool_calls = toolCalls;
                 return newMessages;
               });
             }
 
             if (json.done) {
-              setMessages(prev => {
-                const newMessages = [...prev];
-                newMessages[newMessages.length - 1].metrics = {
-                  total_duration: json.total_duration,
-                  prompt_eval_count: json.prompt_eval_count,
-                  eval_count: json.eval_count
-                };
-                return newMessages;
-              });
+              // Metrics handling could be added here if returned by agent
             }
           } catch (e) {
-            // Partial JSON or other error
+            // Partial JSON
           }
         }
       }
@@ -371,7 +359,6 @@ export default function App() {
           return newMessages;
         });
 
-        const exportMsg: Message = { role: 'assistant', content: cleanContent, timestamp: Date.now() };
         switch (format) {
           case 'pdf': exportToPDF(filename, cleanContent); break;
           case 'docx': exportToWord(filename, cleanContent); break;
@@ -384,7 +371,7 @@ export default function App() {
       console.error("Chat error", error);
       setMessages(prev => [...prev, {
         role: 'system',
-        content: "Error: No se pudo conectar con Ollama. Asegúrate de que el servidor esté corriendo localmente.",
+        content: "Error: No se pudo conectar con el agente. Verifica la URL de Ollama.",
         timestamp: Date.now()
       }]);
     } finally {
@@ -539,7 +526,7 @@ export default function App() {
                 <div className="flex-1 overflow-hidden">
                   {activeTab === 'status' && (
                     <ScrollArea className="h-full p-6">
-                      <div className="space-y-6">
+                      <div className="space-y-6 pb-12 min-h-full">
                         <div>
                           <h3 className="text-[10px] font-mono uppercase opacity-50 mb-3">Estado del Sistema</h3>
                           <div className="space-y-2">
@@ -620,8 +607,10 @@ export default function App() {
 
                   {activeTab === 'config' && (
                     <ScrollArea className="h-full p-6">
-                      <div className="space-y-6">
+                      <div className="space-y-8 pb-12 min-h-full">
+                        {/* Sección 1: Configuración de Ollama */}
                         <div className="space-y-4">
+                          <h3 className="text-[10px] font-mono uppercase font-bold border-b border-[#141414]/10 pb-1">Configuración de Ollama</h3>
                           <div className="space-y-2">
                             <label className="text-[10px] font-mono uppercase opacity-50">Ollama API URL</label>
                             <div className="flex gap-2">
@@ -645,238 +634,121 @@ export default function App() {
                             </div>
                             <p className="text-[8px] font-mono opacity-50 italic">Por defecto: http://localhost:11434</p>
                           </div>
+                        </div>
 
-                          <Separator className="bg-[#141414]/10" />
-
-                          <div 
-                            className={cn(
-                              "flex items-center justify-between p-3 border border-[#141414] transition-all cursor-pointer",
-                              modelConfig.show_metrics 
-                                ? "bg-[#141414] text-[#E4E3E0]" 
-                                : "bg-white/50 text-[#141414] hover:bg-white/80"
-                            )}
-                            onClick={() => setModelConfig(prev => ({ ...prev, show_metrics: !prev.show_metrics }))}
-                          >
-                            <div className="flex flex-col gap-0.5">
-                              <span className="text-[10px] font-mono font-bold uppercase">Show Performance Metrics</span>
-                              <span className={cn(
-                                "text-[8px] font-mono",
-                                modelConfig.show_metrics ? "opacity-70" : "opacity-50"
-                              )}>Mostrar tiempo y tokens al final</span>
-                            </div>
-                            <Switch 
-                              checked={modelConfig.show_metrics} 
-                              onCheckedChange={(v) => setModelConfig(prev => ({ ...prev, show_metrics: v }))}
-                              className={cn(
-                                "data-[state=checked]:bg-[#E4E3E0] data-[state=checked]:border-[#E4E3E0]",
-                                !modelConfig.show_metrics && "data-[state=unchecked]:bg-[#141414]/20"
-                              )}
-                              onClick={(e) => e.stopPropagation()}
-                            />
-                          </div>
-
-                          <div 
-                            className={cn(
-                              "flex items-center justify-between p-3 border border-[#141414] transition-all cursor-pointer",
-                              modelConfig.internet_access 
-                                ? "bg-[#141414] text-[#E4E3E0]" 
-                                : "bg-white/50 text-[#141414] hover:bg-white/80"
-                            )}
-                            onClick={() => setModelConfig(prev => ({ ...prev, internet_access: !prev.internet_access }))}
-                          >
-                            <div className="flex flex-col gap-0.5">
-                              <span className="text-[10px] font-mono font-bold uppercase">Internet Access</span>
-                              <span className={cn(
-                                "text-[8px] font-mono",
-                                modelConfig.internet_access ? "opacity-70" : "opacity-50"
-                              )}>Permitir búsqueda web</span>
-                            </div>
-                            <Switch 
-                              checked={modelConfig.internet_access} 
-                              onCheckedChange={(v) => setModelConfig(prev => ({ ...prev, internet_access: v }))}
-                              className={cn(
-                                "data-[state=checked]:bg-[#E4E3E0] data-[state=checked]:border-[#E4E3E0]",
-                                !modelConfig.internet_access && "data-[state=unchecked]:bg-[#141414]/20"
-                              )}
-                              onClick={(e) => e.stopPropagation()}
-                            />
-                          </div>
-
-                          <div 
-                            className={cn(
-                              "flex items-center justify-between p-3 border border-[#141414] transition-all cursor-pointer",
-                              modelConfig.hardware_acceleration 
-                                ? "bg-[#141414] text-[#E4E3E0]" 
-                                : "bg-white/50 text-[#141414] hover:bg-white/80"
-                            )}
-                            onClick={() => setModelConfig(prev => ({ ...prev, hardware_acceleration: !prev.hardware_acceleration }))}
-                          >
-                            <div className="flex flex-col gap-0.5">
-                              <span className="text-[10px] font-mono font-bold uppercase">Hardware Acceleration</span>
-                              <span className={cn(
-                                "text-[8px] font-mono",
-                                modelConfig.hardware_acceleration ? "opacity-70" : "opacity-50"
-                              )}>Usar GPU si está disponible</span>
-                            </div>
-                            <Switch 
-                              checked={modelConfig.hardware_acceleration} 
-                              onCheckedChange={(v) => setModelConfig(prev => ({ ...prev, hardware_acceleration: v }))}
-                              className={cn(
-                                "data-[state=checked]:bg-[#E4E3E0] data-[state=checked]:border-[#E4E3E0]",
-                                !modelConfig.hardware_acceleration && "data-[state=unchecked]:bg-[#141414]/20"
-                              )}
-                              onClick={(e) => e.stopPropagation()}
-                            />
-                          </div>
-
-                          <Separator className="bg-[#141414]/10" />
-
-                          <div className="grid grid-cols-2 gap-2">
+                        {/* Sección 2: Funcionalidades Custom */}
+                        <div className="space-y-4">
+                          <h3 className="text-[10px] font-mono uppercase font-bold border-b border-[#141414]/10 pb-1">Funcionalidades Custom</h3>
+                          
+                          <div className="grid grid-cols-1 gap-2">
                             <div 
                               className={cn(
-                                "flex flex-col gap-2 p-3 border border-[#141414] transition-all cursor-pointer",
-                                modelConfig.fs_read_access 
-                                  ? "bg-[#141414] text-[#E4E3E0]" 
-                                  : "bg-white/50 text-[#141414] hover:bg-white/80"
+                                "flex items-center justify-between p-3 border border-[#141414] transition-all cursor-pointer",
+                                modelConfig.show_metrics ? "bg-[#141414] text-[#E4E3E0]" : "bg-white/50 text-[#141414]"
                               )}
-                              onClick={() => setModelConfig(prev => ({ ...prev, fs_read_access: !prev.fs_read_access }))}
+                              onClick={() => setModelConfig(prev => ({ ...prev, show_metrics: !prev.show_metrics }))}
                             >
-                              <div className="flex items-center justify-between">
-                                <span className="text-[10px] font-mono font-bold uppercase">FS Read</span>
-                                <Switch 
-                                  checked={modelConfig.fs_read_access} 
-                                  onCheckedChange={(v) => setModelConfig(prev => ({ ...prev, fs_read_access: v }))}
-                                  className={cn(
-                                    "data-[state=checked]:bg-[#E4E3E0] data-[state=checked]:border-[#E4E3E0]",
-                                    !modelConfig.fs_read_access && "data-[state=unchecked]:bg-[#141414]/20"
-                                  )}
-                                  onClick={(e) => e.stopPropagation()}
-                                />
+                              <div className="flex flex-col gap-0.5">
+                                <span className="text-[10px] font-mono font-bold uppercase">Show Metrics</span>
+                                <span className="text-[8px] font-mono opacity-50">Mostrar tiempo y tokens</span>
                               </div>
-                              <span className="text-[8px] font-mono opacity-50">Lectura de archivos</span>
+                              <Switch checked={modelConfig.show_metrics} onCheckedChange={(v) => setModelConfig(prev => ({ ...prev, show_metrics: v }))} onClick={(e) => e.stopPropagation()} />
                             </div>
 
                             <div 
                               className={cn(
-                                "flex flex-col gap-2 p-3 border border-[#141414] transition-all cursor-pointer",
-                                modelConfig.fs_write_access 
-                                  ? "bg-[#141414] text-[#E4E3E0]" 
-                                  : "bg-white/50 text-[#141414] hover:bg-white/80"
+                                "flex items-center justify-between p-3 border border-[#141414] transition-all cursor-pointer",
+                                modelConfig.internet_access ? "bg-[#141414] text-[#E4E3E0]" : "bg-white/50 text-[#141414]"
                               )}
-                              onClick={() => setModelConfig(prev => ({ ...prev, fs_write_access: !prev.fs_write_access }))}
+                              onClick={() => setModelConfig(prev => ({ ...prev, internet_access: !prev.internet_access }))}
                             >
-                              <div className="flex items-center justify-between">
-                                <span className="text-[10px] font-mono font-bold uppercase">FS Write</span>
-                                <Switch 
-                                  checked={modelConfig.fs_write_access} 
-                                  onCheckedChange={(v) => setModelConfig(prev => ({ ...prev, fs_write_access: v }))}
-                                  className={cn(
-                                    "data-[state=checked]:bg-[#E4E3E0] data-[state=checked]:border-[#E4E3E0]",
-                                    !modelConfig.fs_write_access && "data-[state=unchecked]:bg-[#141414]/20"
-                                  )}
-                                  onClick={(e) => e.stopPropagation()}
-                                />
+                              <div className="flex flex-col gap-0.5">
+                                <span className="text-[10px] font-mono font-bold uppercase">Internet Access</span>
+                                <span className="text-[8px] font-mono opacity-50">Permitir búsqueda web</span>
                               </div>
-                              <span className="text-[8px] font-mono opacity-50">Escritura de archivos</span>
+                              <Switch checked={modelConfig.internet_access} onCheckedChange={(v) => setModelConfig(prev => ({ ...prev, internet_access: v }))} onClick={(e) => e.stopPropagation()} />
+                            </div>
+
+                            <div 
+                              className={cn(
+                                "flex items-center justify-between p-3 border border-[#141414] transition-all cursor-pointer",
+                                modelConfig.hardware_acceleration ? "bg-[#141414] text-[#E4E3E0]" : "bg-white/50 text-[#141414]"
+                              )}
+                              onClick={() => setModelConfig(prev => ({ ...prev, hardware_acceleration: !prev.hardware_acceleration }))}
+                            >
+                              <div className="flex flex-col gap-0.5">
+                                <span className="text-[10px] font-mono font-bold uppercase">Hardware Acceleration</span>
+                                <span className="text-[8px] font-mono opacity-50">Usar GPU si está disponible</span>
+                              </div>
+                              <Switch checked={modelConfig.hardware_acceleration} onCheckedChange={(v) => setModelConfig(prev => ({ ...prev, hardware_acceleration: v }))} onClick={(e) => e.stopPropagation()} />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-2">
+                              <div 
+                                className={cn(
+                                  "flex flex-col gap-2 p-3 border border-[#141414] transition-all cursor-pointer",
+                                  modelConfig.fs_read_access ? "bg-[#141414] text-[#E4E3E0]" : "bg-white/50 text-[#141414]"
+                                )}
+                                onClick={() => setModelConfig(prev => ({ ...prev, fs_read_access: !prev.fs_read_access }))}
+                              >
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[10px] font-mono font-bold uppercase">FS Read</span>
+                                  <Switch checked={modelConfig.fs_read_access} onCheckedChange={(v) => setModelConfig(prev => ({ ...prev, fs_read_access: v }))} onClick={(e) => e.stopPropagation()} />
+                                </div>
+                              </div>
+                              <div 
+                                className={cn(
+                                  "flex flex-col gap-2 p-3 border border-[#141414] transition-all cursor-pointer",
+                                  modelConfig.fs_write_access ? "bg-[#141414] text-[#E4E3E0]" : "bg-white/50 text-[#141414]"
+                                )}
+                                onClick={() => setModelConfig(prev => ({ ...prev, fs_write_access: !prev.fs_write_access }))}
+                              >
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[10px] font-mono font-bold uppercase">FS Write</span>
+                                  <Switch checked={modelConfig.fs_write_access} onCheckedChange={(v) => setModelConfig(prev => ({ ...prev, fs_write_access: v }))} onClick={(e) => e.stopPropagation()} />
+                                </div>
+                              </div>
                             </div>
                           </div>
+                        </div>
 
-                          <Separator className="bg-[#141414]/10" />
-
+                        {/* Sección 3: Parámetros del LLM */}
+                        <div className="space-y-4">
+                          <h3 className="text-[10px] font-mono uppercase font-bold border-b border-[#141414]/10 pb-1">Parámetros del LLM</h3>
                           <div className="space-y-4">
                             <div className="space-y-2">
                               <div className="flex justify-between items-center">
                                 <label className="text-[10px] font-mono uppercase opacity-50">Context Length</label>
                                 <span className="text-[10px] font-mono font-bold">{modelConfig.num_ctx}</span>
                               </div>
-                              <Slider 
-                                value={[modelConfig.num_ctx]} 
-                                min={512} max={32768} step={512}
-                                onValueChange={(v) => setModelConfig(prev => ({ ...prev, num_ctx: Array.isArray(v) ? v[0] : v }))}
-                                className="[&_[role=slider]]:bg-[#141414] [&_[role=slider]]:border-[#141414]"
-                              />
+                              <Slider value={[modelConfig.num_ctx]} min={512} max={32768} step={512} onValueChange={(v) => setModelConfig(prev => ({ ...prev, num_ctx: v[0] }))} />
                             </div>
-
-                            <div className="space-y-2">
-                              <div className="flex justify-between items-center">
-                                <label className="text-[10px] font-mono uppercase opacity-50">GPU Offload (Layers)</label>
-                                <span className="text-[10px] font-mono font-bold">{modelConfig.num_gpu}</span>
-                              </div>
-                              <Slider 
-                                value={[modelConfig.num_gpu]} 
-                                min={0} max={100} step={1}
-                                onValueChange={(v) => setModelConfig(prev => ({ ...prev, num_gpu: Array.isArray(v) ? v[0] : v }))}
-                                className="[&_[role=slider]]:bg-[#141414] [&_[role=slider]]:border-[#141414]"
-                              />
-                            </div>
-
-                            <div className="space-y-2">
-                              <div className="flex justify-between items-center">
-                                <label className="text-[10px] font-mono uppercase opacity-50">CPU Threads</label>
-                                <span className="text-[10px] font-mono font-bold">{modelConfig.num_thread}</span>
-                              </div>
-                              <Slider 
-                                value={[modelConfig.num_thread]} 
-                                min={1} max={32} step={1}
-                                onValueChange={(v) => setModelConfig(prev => ({ ...prev, num_thread: Array.isArray(v) ? v[0] : v }))}
-                                className="[&_[role=slider]]:bg-[#141414] [&_[role=slider]]:border-[#141414]"
-                              />
-                            </div>
-
-                            <Separator className="bg-[#141414]/10" />
 
                             <div className="space-y-2">
                               <div className="flex justify-between items-center">
                                 <label className="text-[10px] font-mono uppercase opacity-50">Temperature</label>
                                 <span className="text-[10px] font-mono font-bold">{modelConfig.temperature}</span>
                               </div>
-                              <Slider 
-                                value={[modelConfig.temperature]} 
-                                min={0} max={2} step={0.1}
-                                onValueChange={(v) => setModelConfig(prev => ({ ...prev, temperature: Array.isArray(v) ? v[0] : v }))}
-                                className="[&_[role=slider]]:bg-[#141414] [&_[role=slider]]:border-[#141414]"
-                              />
+                              <Slider value={[modelConfig.temperature]} min={0} max={2} step={0.1} onValueChange={(v) => setModelConfig(prev => ({ ...prev, temperature: v[0] }))} />
                             </div>
 
-                            <div className="space-y-2">
-                              <div className="flex justify-between items-center">
+                            <div className="grid grid-cols-2 gap-4">
+                              <div className="space-y-2">
                                 <label className="text-[10px] font-mono uppercase opacity-50">Top P</label>
-                                <span className="text-[10px] font-mono font-bold">{modelConfig.top_p}</span>
+                                <Slider value={[modelConfig.top_p]} min={0} max={1} step={0.05} onValueChange={(v) => setModelConfig(prev => ({ ...prev, top_p: v[0] }))} />
                               </div>
-                              <Slider 
-                                value={[modelConfig.top_p]} 
-                                min={0} max={1} step={0.05}
-                                onValueChange={(v) => setModelConfig(prev => ({ ...prev, top_p: Array.isArray(v) ? v[0] : v }))}
-                                className="[&_[role=slider]]:bg-[#141414] [&_[role=slider]]:border-[#141414]"
-                              />
-                            </div>
-
-                            <div className="space-y-2">
-                              <div className="flex justify-between items-center">
+                              <div className="space-y-2">
                                 <label className="text-[10px] font-mono uppercase opacity-50">Top K</label>
-                                <span className="text-[10px] font-mono font-bold">{modelConfig.top_k}</span>
+                                <Slider value={[modelConfig.top_k]} min={1} max={100} step={1} onValueChange={(v) => setModelConfig(prev => ({ ...prev, top_k: v[0] }))} />
                               </div>
-                              <Slider 
-                                value={[modelConfig.top_k]} 
-                                min={1} max={100} step={1}
-                                onValueChange={(v) => setModelConfig(prev => ({ ...prev, top_k: Array.isArray(v) ? v[0] : v }))}
-                                className="[&_[role=slider]]:bg-[#141414] [&_[role=slider]]:border-[#141414]"
-                              />
-                            </div>
-
-                            <div className="space-y-2">
-                              <div className="flex justify-between items-center">
-                                <label className="text-[10px] font-mono uppercase opacity-50">Repeat Penalty</label>
-                                <span className="text-[10px] font-mono font-bold">{modelConfig.repeat_penalty}</span>
-                              </div>
-                              <Slider 
-                                value={[modelConfig.repeat_penalty]} 
-                                min={1} max={2} step={0.1}
-                                onValueChange={(v) => setModelConfig(prev => ({ ...prev, repeat_penalty: Array.isArray(v) ? v[0] : v }))}
-                                className="[&_[role=slider]]:bg-[#141414] [&_[role=slider]]:border-[#141414]"
-                              />
                             </div>
                           </div>
+                        </div>
+
+                        {/* Sección 4: Tools */}
+                        <div className="space-y-4">
+                          <h3 className="text-[10px] font-mono uppercase font-bold border-b border-[#141414]/10 pb-1">Tools</h3>
+                          <ToolConfig modelConfig={modelConfig} setModelConfig={setModelConfig} />
                         </div>
                       </div>
                     </ScrollArea>
@@ -884,7 +756,7 @@ export default function App() {
 
                   {activeTab === 'connectors' && (
                     <ScrollArea className="h-full p-6">
-                      <div className="space-y-6">
+                      <div className="space-y-6 pb-12 min-h-full">
                         <div className="space-y-4">
                           <div className="flex flex-col gap-2">
                             <h3 className="text-[10px] font-mono uppercase opacity-50">Servidores MCP / API</h3>
@@ -969,115 +841,12 @@ export default function App() {
 
                   {activeTab === 'personality' && (
                     <ScrollArea className="h-full p-6">
-                      <div className="space-y-6">
-                        <div className="flex items-center justify-between">
-                          <h3 className="text-[10px] font-mono uppercase opacity-50">Perfiles de Personalidad</h3>
-                          <Button 
-                            variant="outline" 
-                            size="icon" 
-                            className="h-6 w-6 border-[#141414] rounded-none"
-                            onClick={() => {
-                              const newProfile: PersonalityProfile = {
-                                id: Math.random().toString(36).substr(2, 9),
-                                name: 'Nueva Personalidad',
-                                systemPrompt: 'Eres un asistente útil...'
-                              };
-                              setPersonalityProfiles(prev => [...prev, newProfile]);
-                              setEditingProfileId(newProfile.id);
-                            }}
-                          >
-                            <Plus className="w-3 h-3" />
-                          </Button>
-                        </div>
-
-                        <div className="space-y-3">
-                          {personalityProfiles.map(profile => (
-                            <div 
-                              key={profile.id}
-                              className={cn(
-                                "border border-[#141414] transition-all",
-                                selectedProfileId === profile.id ? "bg-[#141414] text-[#E4E3E0]" : "bg-white/50"
-                              )}
-                            >
-                              <div className="p-3 flex items-center justify-between">
-                                <div 
-                                  className="flex-1 cursor-pointer"
-                                  onClick={() => setSelectedProfileId(profile.id)}
-                                >
-                                  <div className="flex items-center gap-2">
-                                    <UserCircle className="w-4 h-4" />
-                                    <span className="text-[10px] font-bold uppercase">{profile.name}</span>
-                                    {profile.isDefault && (
-                                      <Badge variant="outline" className="text-[7px] rounded-none px-1 py-0 border-current opacity-50">DEFAULT</Badge>
-                                    )}
-                                  </div>
-                                </div>
-                                <div className="flex items-center gap-1">
-                                  <Button 
-                                    variant="ghost" 
-                                    size="icon" 
-                                    className={cn("h-6 w-6 rounded-none", selectedProfileId === profile.id ? "text-[#E4E3E0] hover:bg-white/10" : "text-[#141414] hover:bg-[#141414]/5")}
-                                    onClick={() => setEditingProfileId(editingProfileId === profile.id ? null : profile.id)}
-                                  >
-                                    <Edit2 className="w-3 h-3" />
-                                  </Button>
-                                  {!profile.isDefault && (
-                                    <Button 
-                                      variant="ghost" 
-                                      size="icon" 
-                                      className={cn("h-6 w-6 rounded-none text-red-500", selectedProfileId === profile.id ? "hover:bg-white/10" : "hover:bg-[#141414]/5")}
-                                      onClick={() => {
-                                        if (selectedProfileId === profile.id) setSelectedProfileId('default');
-                                        setPersonalityProfiles(prev => prev.filter(p => p.id !== profile.id));
-                                      }}
-                                    >
-                                      <Trash2 className="w-3 h-3" />
-                                    </Button>
-                                  )}
-                                </div>
-                              </div>
-
-                              <AnimatePresence>
-                                {editingProfileId === profile.id && (
-                                  <motion.div 
-                                    initial={{ height: 0, opacity: 0 }}
-                                    animate={{ height: 'auto', opacity: 1 }}
-                                    exit={{ height: 0, opacity: 0 }}
-                                    className="px-3 pb-3 space-y-3 border-t border-[#141414]/20 pt-3"
-                                  >
-                                    <div className="space-y-1">
-                                      <label className="text-[8px] font-mono uppercase opacity-50">Nombre</label>
-                                      <Input 
-                                        value={profile.name}
-                                        onChange={(e) => {
-                                          setPersonalityProfiles(prev => prev.map(p => p.id === profile.id ? { ...p, name: e.target.value } : p));
-                                        }}
-                                        className="h-7 text-[10px] font-mono rounded-none border-[#141414] bg-transparent"
-                                      />
-                                    </div>
-                                    <div className="space-y-1">
-                                      <label className="text-[8px] font-mono uppercase opacity-50">System Prompt</label>
-                                      <textarea 
-                                        value={profile.systemPrompt}
-                                        onChange={(e) => {
-                                          setPersonalityProfiles(prev => prev.map(p => p.id === profile.id ? { ...p, systemPrompt: e.target.value } : p));
-                                        }}
-                                        className="w-full min-h-[100px] text-[10px] font-mono rounded-none border border-[#141414] bg-transparent p-2 focus:ring-0"
-                                      />
-                                    </div>
-                                    <Button 
-                                      className="w-full h-7 text-[8px] font-mono uppercase rounded-none bg-[#141414] text-[#E4E3E0]"
-                                      onClick={() => setEditingProfileId(null)}
-                                    >
-                                      <Save className="w-3 h-3 mr-2" /> Guardar Perfil
-                                    </Button>
-                                  </motion.div>
-                                )}
-                              </AnimatePresence>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
+                      <PersonalityConfig 
+                        profiles={personalityProfiles}
+                        selectedProfileId={selectedProfileId}
+                        onSelect={setSelectedProfileId}
+                        onUpdate={setPersonalityProfiles}
+                      />
                     </ScrollArea>
                   )}
                 </div>
@@ -1194,6 +963,18 @@ export default function App() {
                     </div>
 
                     <div className="prose prose-sm max-w-none font-sans text-sm leading-relaxed text-[#141414]">
+                      {msg.tool_calls && msg.tool_calls.length > 0 && (
+                        <div className="mb-4 space-y-2">
+                          {msg.tool_calls.map((call, idx) => (
+                            <div key={idx} className="flex items-center gap-2 p-2 bg-[#141414]/5 border-l-2 border-[#141414] font-mono text-[10px]">
+                              <Terminal className="w-3 h-3 animate-pulse" />
+                              <span className="font-bold uppercase">Ejecutando:</span>
+                              <span className="opacity-70">{call.name}</span>
+                              <span className="opacity-40 italic">({JSON.stringify(call.args)})</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                       <ReactMarkdown remarkPlugins={[remarkGfm]}>
                         {msg.content}
                       </ReactMarkdown>

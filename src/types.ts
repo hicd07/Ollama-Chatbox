@@ -9,6 +9,11 @@ export interface Message {
     prompt_eval_count: number;
     eval_count: number;
   };
+  tool_calls?: {
+    name: string;
+    args: any;
+    id: string;
+  }[];
 }
 
 export interface OllamaModel {
@@ -59,6 +64,7 @@ export interface PersonalityProfile {
   name: string;
   systemPrompt: string;
   isDefault?: boolean;
+  avatar?: string;
 }
 
 export interface ModelConfig {
@@ -76,4 +82,23 @@ export interface ModelConfig {
   show_metrics: boolean;
   fs_read_access: boolean;
   fs_write_access: boolean;
+  tools: {
+    web_search: boolean;
+    file_system: boolean;
+    calculator: boolean;
+    image_generation: boolean;
+    wikipedia: boolean;
+    python_repl: boolean;
+    arxiv: boolean;
+    youtube_search: boolean;
+    csv_analyzer: boolean;
+    wolfram_alpha: boolean;
+    gmail: boolean;
+    calendar: boolean;
+    slack: boolean;
+    mcp: boolean;
+    custom_api: boolean;
+  };
+  mcp_server_url?: string;
+  custom_api_url?: string;
 }

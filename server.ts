@@ -5,6 +5,42 @@ import { fileURLToPath } from "url";
 import axios from "axios";
 import * as cheerio from "cheerio";
 import { NodeHtmlMarkdown } from "node-html-markdown";
+import { ChatOllama } from "@langchain/ollama";
+import { DynamicTool } from "@langchain/core/tools";
+import { StateGraph, START, END, Annotation } from "@langchain/langgraph";
+import { ToolNode } from "@langchain/langgraph/prebuilt";
+import { AIMessage, BaseMessage, HumanMessage, SystemMessage } from "@langchain/core/messages";
+import { 
+  createWebSearchTool, 
+  createGmailTool, 
+  createCalendarTool, 
+  createSlackTool, 
+  createCalculatorTool, 
+  createImageGenerationTool, 
+  createWikipediaTool, 
+  createPythonReplTool, 
+  createKnowledgeBaseTool, 
+  createBrowserTool, 
+  createArxivTool, 
+  createYoutubeSearchTool, 
+  createWolframAlphaTool, 
+  createFileSystemTool, 
+  createCsvAnalyzerTool, 
+  createMcpTool, 
+  createCustomApiTool 
+} from "./server/tools";
+
+const MessagesState = Annotation.Root({
+  messages: Annotation<BaseMessage[]>({
+    reducer: (x, y) => x.concat(y),
+    default: () => [],
+  }),
+});
+import fs from "fs/promises";
+import { exec } from "child_process";
+import { promisify } from "util";
+
+const execPromise = promisify(exec);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -17,7 +53,133 @@ async function startServer() {
 
   // API Routes
   
-  // Proxy to Ollama (to handle CORS and provide a single endpoint)
+  // --- LangGraph Agent Implementation ---
+
+  app.post("/api/agent/chat", async (req, res) => {
+    const { ollama_url, model, messages, config, knowledge_base } = req.body;
+    const targetUrl = ollama_url || "http://localhost:11434";
+
+    const tools: DynamicTool[] = [];
+    const hasInternet = config.internet_access;
+
+    // Local / Configured Tools (Prioritized)
+    if (config.tools.knowledge_base || (knowledge_base && knowledge_base.length > 0)) {
+      tools.push(createKnowledgeBaseTool(knowledge_base || []));
+    }
+    if (config.tools.mcp) tools.push(createMcpTool(config.mcp_server_url));
+    if (config.tools.custom_api) tools.push(createCustomApiTool(config.custom_api_url));
+    if (config.tools.file_system) tools.push(createFileSystemTool(config.fs_read_access, config.fs_write_access));
+    if (config.tools.csv_analyzer) tools.push(createCsvAnalyzerTool(knowledge_base || []));
+    if (config.tools.calculator) tools.push(createCalculatorTool());
+    if (config.tools.python_repl) tools.push(createPythonReplTool());
+
+    // Internet Dependent Tools (Only if internet_access is enabled)
+    if (hasInternet) {
+      if (config.tools.web_search) {
+        tools.push(createWebSearchTool());
+        tools.push(createBrowserTool());
+      }
+      if (config.tools.wikipedia) tools.push(createWikipediaTool());
+      if (config.tools.arxiv) tools.push(createArxivTool());
+      if (config.tools.youtube_search) tools.push(createYoutubeSearchTool());
+      if (config.tools.wolfram_alpha) tools.push(createWolframAlphaTool());
+      if (config.tools.gmail) tools.push(createGmailTool());
+      if (config.tools.calendar) tools.push(createCalendarTool());
+      if (config.tools.slack) tools.push(createSlackTool());
+      if (config.tools.image_generation) tools.push(createImageGenerationTool());
+    }
+
+    const llm = new ChatOllama({
+      baseUrl: targetUrl,
+      model: model,
+      temperature: config.temperature,
+      numCtx: config.num_ctx,
+    }).bindTools(tools);
+
+    const toolNode = new ToolNode(tools);
+
+    const callModel = async (state: typeof MessagesState.State) => {
+      const enhancedMessages = [...state.messages];
+      const systemMsgIndex = enhancedMessages.findIndex(m => m instanceof SystemMessage);
+      
+      const priorityInstruction = `
+STRICT TOOL PRIORITIZATION RULE:
+1. ALWAYS check internal/local sources FIRST: 'knowledge_base', 'mcp_connector', 'custom_api', 'file_system'.
+2. ONLY use internet-based tools ('web_search', 'wikipedia', 'arxiv', etc.) if the information is NOT found in local sources.
+3. If 'internet_access' is disabled (not in your tool list), do NOT attempt to search the web.
+4. Respect file system permissions: 'file_system' will return errors if read/write is disabled.
+`;
+
+      if (systemMsgIndex !== -1) {
+        const existingContent = enhancedMessages[systemMsgIndex].content;
+        enhancedMessages[systemMsgIndex] = new SystemMessage(existingContent + "\n" + priorityInstruction);
+      } else {
+        enhancedMessages.unshift(new SystemMessage(priorityInstruction));
+      }
+
+      const response = await llm.invoke(enhancedMessages);
+      return { messages: [response] };
+    };
+
+    const shouldContinue = (state: typeof MessagesState.State) => {
+      const { messages } = state;
+      const lastMessage = messages[messages.length - 1] as AIMessage;
+      if (lastMessage.tool_calls && lastMessage.tool_calls.length > 0) {
+        return "tools";
+      }
+      return END;
+    };
+
+    const workflow = new StateGraph(MessagesState)
+      .addNode("agent", callModel)
+      .addNode("tools", toolNode)
+      .addEdge(START, "agent")
+      .addConditionalEdges("agent", shouldContinue)
+      .addEdge("tools", "agent");
+
+    const graph = workflow.compile();
+
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+
+    try {
+      const inputs = {
+        messages: messages.map((m: any) => {
+          if (m.role === 'user') return new HumanMessage(m.content);
+          if (m.role === 'assistant') return new AIMessage(m.content);
+          if (m.role === 'system') return new SystemMessage(m.content);
+          return new HumanMessage(m.content);
+        })
+      };
+
+      const stream = await graph.stream(inputs, { streamMode: "values" });
+
+      for await (const chunk of stream) {
+        const messages = (chunk as any).messages;
+        if (messages && messages.length > 0) {
+          const lastMessage = messages[messages.length - 1];
+          if (lastMessage instanceof AIMessage) {
+            res.write(JSON.stringify({ 
+              message: { 
+                role: 'assistant', 
+                content: lastMessage.content,
+                tool_calls: lastMessage.tool_calls 
+              } 
+            }) + '\n');
+          }
+        }
+      }
+      res.write(JSON.stringify({ done: true }) + '\n');
+      res.end();
+    } catch (error: any) {
+      console.error("Agent Error:", error);
+      res.write(JSON.stringify({ error: "Agent failed", message: error.message }) + '\n');
+      res.end();
+    }
+  });
+
+  // --- End LangGraph Agent Implementation ---
   app.get("/api/ollama/models", async (req, res) => {
     const ollamaUrl = (req.query.url as string) || "http://localhost:11434";
     try {
