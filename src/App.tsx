@@ -133,6 +133,7 @@ export default function App() {
   });
   
   const scrollRef = useRef<HTMLDivElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     fetchModels();
@@ -140,10 +141,10 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'auto' });
     }
-  }, [messages]);
+  }, [messages, isLoading]);
 
   const checkSystem = async () => {
     try {
@@ -1018,6 +1019,7 @@ export default function App() {
                   </div>
                 </div>
               )}
+              <div ref={messagesEndRef} />
             </div>
           </ScrollArea>
 
