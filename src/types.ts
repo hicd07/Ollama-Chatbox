@@ -101,4 +101,5 @@ export interface ModelConfig {
   };
   mcp_server_url?: string;
   custom_api_url?: string;
+  system_ram?: number;
 }

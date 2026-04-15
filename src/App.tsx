@@ -130,7 +130,8 @@ export default function App() {
       custom_api: false
     },
     mcp_server_url: '',
-    custom_api_url: ''
+    custom_api_url: '',
+    system_ram: 16
   });
   
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -190,6 +191,52 @@ export default function App() {
       if (!e.response) {
         setGlobalError("No se pudo conectar con el servidor backend. ¿Está el proceso de Node.js corriendo?");
       }
+    }
+  };
+
+  const estimateMemory = () => {
+    const currentModel = models.find(m => m.name === selectedModel);
+    if (!currentModel) return { weights: 0, context: 0, total: 0, gpu: 0, ram: 0 };
+
+    // Weights in GB
+    const weightsGB = currentModel.size / (1024 * 1024 * 1024);
+    
+    // Context estimation (Heuristic: ~0.5GB per 4k tokens for 7B-8B models)
+    // Formula: (num_ctx / 4096) * 0.5
+    const contextGB = (modelConfig.num_ctx / 4096) * 0.5;
+    
+    const totalGB = weightsGB + contextGB;
+    
+    // GPU Offload estimation
+    // num_gpu is layers. Assuming 35 layers total for a typical 7B model.
+    const layersTotal = 35; 
+    const gpuRatio = Math.min(modelConfig.num_gpu / layersTotal, 1);
+    
+    const gpuGB = totalGB * gpuRatio;
+    const ramGB = totalGB * (1 - gpuRatio);
+    
+    return {
+      weights: weightsGB,
+      context: contextGB,
+      total: totalGB,
+      gpu: gpuGB,
+      ram: ramGB
+    };
+  };
+
+  const memory = estimateMemory();
+
+  const applyPreset = (type: 'eco' | 'balanced' | 'power') => {
+    switch (type) {
+      case 'eco':
+        setModelConfig(prev => ({ ...prev, num_gpu: 0, num_ctx: 2048, hardware_acceleration: false }));
+        break;
+      case 'balanced':
+        setModelConfig(prev => ({ ...prev, num_gpu: 35, num_ctx: 4096, hardware_acceleration: true }));
+        break;
+      case 'power':
+        setModelConfig(prev => ({ ...prev, num_gpu: 99, num_ctx: 8192, hardware_acceleration: true }));
+        break;
     }
   };
 
@@ -726,19 +773,95 @@ export default function App() {
 
                         {/* Sección 3: Parámetros del LLM */}
                         <div className="space-y-6">
-                          <div className="flex items-center justify-between border-b border-[#141414]/10 pb-2">
-                            <div className="flex items-center gap-2">
-                              <h3 className="text-[10px] font-mono uppercase font-bold">Estimated Memory Usage</h3>
-                              <Badge variant="outline" className="text-[8px] rounded-none px-1 py-0 opacity-50">Beta</Badge>
-                            </div>
-                            <div className="flex gap-4 text-[10px] font-mono">
-                              <div className="flex gap-2">
-                                <span className="opacity-50 uppercase">GPU</span>
-                                <span className="font-bold border border-[#141414] px-1 bg-white/50">7.04 GB</span>
+                          <div className="space-y-4">
+                            <div className="flex items-center justify-between border-b border-[#141414]/10 pb-2">
+                              <div className="flex items-center gap-2">
+                                <h3 className="text-[10px] font-mono uppercase font-bold">Memory Optimization</h3>
+                                <Badge variant="outline" className="text-[8px] rounded-none px-1 py-0 bg-[#141414] text-white">Live</Badge>
                               </div>
                               <div className="flex gap-2">
-                                <span className="opacity-50 uppercase">Total</span>
-                                <span className="font-bold border border-[#141414] px-1 bg-white/50">7.04 GB</span>
+                                <Button 
+                                  variant="outline" 
+                                  size="sm" 
+                                  className="h-5 text-[8px] font-mono uppercase rounded-none border-[#141414]/20 hover:bg-[#141414] hover:text-white"
+                                  onClick={() => applyPreset('eco')}
+                                >
+                                  Eco (RAM)
+                                </Button>
+                                <Button 
+                                  variant="outline" 
+                                  size="sm" 
+                                  className="h-5 text-[8px] font-mono uppercase rounded-none border-[#141414]/20 hover:bg-[#141414] hover:text-white"
+                                  onClick={() => applyPreset('balanced')}
+                                >
+                                  Balanced
+                                </Button>
+                                <Button 
+                                  variant="outline" 
+                                  size="sm" 
+                                  className="h-5 text-[8px] font-mono uppercase rounded-none border-[#141414]/20 hover:bg-[#141414] hover:text-white"
+                                  onClick={() => applyPreset('power')}
+                                >
+                                  Power (GPU)
+                                </Button>
+                              </div>
+                            </div>
+
+                            <div className="space-y-2">
+                              <div className="flex justify-between text-[9px] font-mono uppercase opacity-60">
+                                <span>Memory Distribution</span>
+                                <div className="flex gap-2">
+                                  <span>Total: {memory.total.toFixed(2)} GB</span>
+                                  <span className="opacity-30">/</span>
+                                  <span className="cursor-pointer hover:underline" onClick={() => {
+                                    const val = prompt("Total System RAM (GB):", "16");
+                                    if (val) setModelConfig(prev => ({ ...prev, system_ram: parseInt(val) }));
+                                  }}>Limit: {modelConfig.system_ram || 16} GB</span>
+                                </div>
+                              </div>
+                              <div className="h-4 w-full bg-[#141414]/5 border border-[#141414]/10 flex overflow-hidden relative">
+                                <div 
+                                  className="h-full bg-[#141414] transition-all duration-500 flex items-center justify-center z-10"
+                                  style={{ width: `${(memory.gpu / (modelConfig.system_ram || 16)) * 100}%` }}
+                                >
+                                  {memory.gpu > 0.5 && <span className="text-[7px] text-white font-bold uppercase px-1">GPU</span>}
+                                </div>
+                                <div 
+                                  className="h-full bg-[#141414]/30 transition-all duration-500 flex items-center justify-center z-10"
+                                  style={{ width: `${(memory.ram / (modelConfig.system_ram || 16)) * 100}%` }}
+                                >
+                                  {memory.ram > 0.5 && <span className="text-[7px] text-[#141414] font-bold uppercase px-1">RAM</span>}
+                                </div>
+                                {/* Warning threshold */}
+                                <div className="absolute right-0 top-0 h-full w-[20%] bg-red-500/10 border-l border-red-500/20 pointer-events-none" />
+                              </div>
+                              <div className="flex justify-between text-[8px] font-mono opacity-50">
+                                <div className="flex gap-2">
+                                  <div className="flex items-center gap-1">
+                                    <div className="w-1.5 h-1.5 bg-[#141414]" />
+                                    <span>VRAM: {memory.gpu.toFixed(2)} GB</span>
+                                  </div>
+                                  <div className="flex items-center gap-1">
+                                    <div className="w-1.5 h-1.5 bg-[#141414]/30" />
+                                    <span>RAM: {memory.ram.toFixed(2)} GB</span>
+                                  </div>
+                                </div>
+                                <span>Weights: {memory.weights.toFixed(2)} GB | Cache: {memory.context.toFixed(2)} GB</span>
+                              </div>
+                              
+                              {/* Optimization Tip */}
+                              <div className="mt-4 p-3 bg-blue-50/50 border border-blue-200/50 text-[9px] font-mono text-blue-900/70">
+                                <div className="flex items-center gap-2 mb-1 font-bold uppercase text-[8px] opacity-60">
+                                  <Activity className="w-3 h-3" />
+                                  Optimization Tip
+                                </div>
+                                {memory.total > (modelConfig.system_ram || 16) * 0.8 ? (
+                                  <p>⚠️ Tu configuración está cerca del límite de RAM. Considera reducir el <b>Context Length</b> o aumentar el <b>GPU Offload</b> para evitar lentitud.</p>
+                                ) : modelConfig.num_gpu === 0 ? (
+                                  <p>💡 Estás en modo 100% RAM. Esto es seguro pero lento. Si tienes una GPU, intenta subir el <b>GPU Offload</b> a 35 para acelerar la respuesta.</p>
+                                ) : (
+                                  <p>✅ Configuración balanceada. El modelo está repartido entre RAM y VRAM para un rendimiento óptimo en sistemas de 16GB.</p>
+                                )}
                               </div>
                             </div>
                           </div>
@@ -784,14 +907,21 @@ export default function App() {
                             <div className="space-y-3">
                               <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-2">
-                                  <label className="text-[11px] font-mono font-bold uppercase">GPU Offload</label>
-                                  <HelpCircle className="w-3 h-3 opacity-30 cursor-help" />
+                                  <label className="text-[11px] font-mono font-bold uppercase">GPU Offload (Layers)</label>
+                                  <Tooltip>
+                                    <TooltipTrigger render={<HelpCircle className="w-3 h-3 opacity-30 cursor-help" />} />
+                                    <TooltipContent className="bg-[#141414] text-[#E4E3E0] text-[10px] rounded-none max-w-[200px]">
+                                      Número de capas del modelo que se procesarán en la GPU. 0 = 100% RAM.
+                                    </TooltipContent>
+                                  </Tooltip>
                                 </div>
                                 <div className="flex items-center gap-2">
-                                  <Trash2 
-                                    className="w-3 h-3 opacity-30 hover:opacity-100 cursor-pointer transition-opacity" 
-                                    onClick={() => setModelConfig(prev => ({ ...prev, num_gpu: 35 }))}
-                                  />
+                                  <div className={cn(
+                                    "text-[8px] font-mono uppercase px-1 border",
+                                    modelConfig.num_gpu === 0 ? "border-amber-500 text-amber-600 bg-amber-50" : "border-green-500 text-green-600 bg-green-50"
+                                  )}>
+                                    {modelConfig.num_gpu === 0 ? "Modo RAM" : "Modo Híbrido"}
+                                  </div>
                                   <div className="bg-white border border-[#141414] px-2 py-0.5 text-[11px] font-mono font-bold min-w-[60px] text-right">
                                     {modelConfig.num_gpu}
                                   </div>
