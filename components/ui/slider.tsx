@@ -1,51 +1,68 @@
-import { Slider as SliderPrimitive } from "@base-ui/react/slider"
-
 import { cn } from "@/lib/utils"
 
 function Slider({
   className,
-  defaultValue,
   value,
   min = 0,
   max = 100,
+  step = 1,
   onValueChange,
-  ...props
-}: SliderPrimitive.Root.Props & { onValueChange?: (value: number[]) => void }) {
-  // Determine the number of thumbs based on the value or defaultValue
-  const values = value ?? defaultValue ?? [min];
-  const thumbCount = Array.isArray(values) ? values.length : 1;
+}: {
+  className?: string;
+  value: number[];
+  min?: number;
+  max?: number;
+  step?: number;
+  onValueChange: (value: number[]) => void;
+}) {
+  // Senior Architect Note: Using a native range input as the interaction layer 
+  // ensures maximum compatibility across browsers and prevents event hijacking 
+  // by parent scroll containers or animation libraries.
+  const val = value[0] ?? min;
+  const percentage = ((val - min) / (max - min)) * 100;
 
   return (
-    <SliderPrimitive.Root
-      className={cn("relative flex w-full touch-none items-center select-none data-disabled:opacity-50 h-5", className)}
-      data-slot="slider"
-      value={value}
-      defaultValue={defaultValue}
-      min={min}
-      max={max}
-      onValueChange={onValueChange}
-      {...props}
-    >
-      <SliderPrimitive.Control className="relative flex w-full items-center">
-        <SliderPrimitive.Track
-          data-slot="slider-track"
-          className="relative h-1 w-full grow overflow-hidden rounded-full bg-[#141414]/10"
-        >
-          <SliderPrimitive.Indicator
-            data-slot="slider-range"
-            className="absolute h-full bg-[#141414]"
-          />
-        </SliderPrimitive.Track>
-        {Array.from({ length: thumbCount }).map((_, index) => (
-          <SliderPrimitive.Thumb
-            data-slot="slider-thumb"
-            key={index}
-            className="block size-4 rounded-full border-2 border-[#141414] bg-white ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#141414] focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 hover:scale-125 active:scale-90 cursor-grab active:cursor-grabbing shadow-sm"
-          />
-        ))}
-      </SliderPrimitive.Control>
-    </SliderPrimitive.Root>
-  )
+    <div className={cn("relative w-full h-6 flex items-center group touch-none", className)}>
+      {/* Track Background */}
+      <div className="absolute w-full h-1.5 bg-[#141414]/10 rounded-full overflow-hidden">
+        {/* Progress Indicator */}
+        <div 
+          className="absolute h-full bg-[#141414] transition-all duration-75" 
+          style={{ width: `${percentage}%` }}
+        />
+      </div>
+      
+      {/* Native Range Input (Hidden but functional) */}
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={val}
+        onChange={(e) => {
+          const newValue = parseFloat(e.target.value);
+          onValueChange([newValue]);
+        }}
+        onPointerDown={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
+        className="absolute w-full h-full opacity-0 cursor-pointer z-20"
+        style={{ margin: 0 }}
+      />
+      
+      {/* Custom Thumb */}
+      <div 
+        className={cn(
+          "absolute size-4 rounded-full border-2 border-[#141414] bg-white shadow-md",
+          "pointer-events-none transition-all duration-75",
+          "group-hover:scale-125 group-active:scale-95 group-active:bg-[#141414]"
+        )}
+        style={{ 
+          left: `calc(${percentage}% - 8px)`,
+          transition: 'left 75ms ease-out, transform 75ms ease-out, background-color 75ms ease-out'
+        }}
+      />
+    </div>
+  );
 }
 
 export { Slider }
