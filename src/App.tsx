@@ -776,6 +776,7 @@ export default function App() {
                                     setModelConfig(prev => ({ ...prev, num_ctx: v[0] }));
                                   }
                                 }} 
+                                onPointerDown={(e) => e.stopPropagation()}
                                 className="py-2"
                               />
                             </div>
@@ -807,6 +808,7 @@ export default function App() {
                                     setModelConfig(prev => ({ ...prev, num_gpu: v[0] }));
                                   }
                                 }} 
+                                onPointerDown={(e) => e.stopPropagation()}
                                 className="py-2"
                               />
                             </div>
@@ -832,6 +834,7 @@ export default function App() {
                                     setModelConfig(prev => ({ ...prev, num_thread: v[0] }));
                                   }
                                 }} 
+                                onPointerDown={(e) => e.stopPropagation()}
                                 className="py-2"
                               />
                             </div>
@@ -853,6 +856,7 @@ export default function App() {
                                       setModelConfig(prev => ({ ...prev, temperature: v[0] }));
                                     }
                                   }} 
+                                  onPointerDown={(e) => e.stopPropagation()}
                                 />
                               </div>
 
@@ -869,6 +873,7 @@ export default function App() {
                                         setModelConfig(prev => ({ ...prev, top_p: v[0] }));
                                       }
                                     }} 
+                                    onPointerDown={(e) => e.stopPropagation()}
                                   />
                                 </div>
                                 <div className="space-y-2">
@@ -883,6 +888,7 @@ export default function App() {
                                         setModelConfig(prev => ({ ...prev, top_k: v[0] }));
                                       }
                                     }} 
+                                    onPointerDown={(e) => e.stopPropagation()}
                                   />
                                 </div>
                               </div>
