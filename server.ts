@@ -94,6 +94,12 @@ async function startServer() {
       model: model,
       temperature: config.temperature,
       numCtx: config.num_ctx,
+      numGpu: config.num_gpu,
+      numThread: config.num_thread,
+      topK: config.top_k,
+      topP: config.top_p,
+      repeatPenalty: config.repeat_penalty,
+      seed: config.seed,
     }).bindTools(tools);
 
     const toolNode = new ToolNode(tools);
