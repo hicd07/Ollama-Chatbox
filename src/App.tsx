@@ -386,14 +386,17 @@ export default function App() {
           if (!line.trim()) continue;
           try {
             const json = JSON.parse(line);
-            if (json.message?.content || json.message?.tool_calls) {
-              assistantContent = json.message.content || "";
+            if (json.message?.content !== undefined || json.message?.tool_calls || json.message?.metrics) {
+              if (json.message.content !== undefined) assistantContent = json.message.content;
               const toolCalls = json.message.tool_calls;
+              const metrics = json.message.metrics;
+              
               setMessages(prev => {
                 const newMessages = [...prev];
                 const lastMsg = newMessages[newMessages.length - 1];
-                lastMsg.content = assistantContent;
-                lastMsg.tool_calls = toolCalls;
+                if (json.message.content !== undefined) lastMsg.content = assistantContent;
+                if (toolCalls) lastMsg.tool_calls = toolCalls;
+                if (metrics) lastMsg.metrics = metrics;
                 return newMessages;
               });
             }

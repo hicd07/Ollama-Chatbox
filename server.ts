@@ -170,7 +170,12 @@ STRICT TOOL PRIORITIZATION RULE:
               message: { 
                 role: 'assistant', 
                 content: lastMessage.content,
-                tool_calls: lastMessage.tool_calls 
+                tool_calls: lastMessage.tool_calls,
+                metrics: lastMessage.usage_metadata ? {
+                  total_duration: (lastMessage.response_metadata as any)?.total_duration || 0,
+                  prompt_eval_count: lastMessage.usage_metadata.input_tokens || 0,
+                  eval_count: lastMessage.usage_metadata.output_tokens || 0
+                } : undefined
               } 
             }) + '\n');
           }
