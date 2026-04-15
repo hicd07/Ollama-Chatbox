@@ -135,6 +135,16 @@ export default function App() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  const parseContent = (content: string) => {
+    const thinkMatch = content.match(/<think>([\s\S]*?)(?:<\/think>|$)/);
+    if (thinkMatch) {
+      const thought = thinkMatch[1].trim();
+      const response = content.replace(/<think>[\s\S]*?(?:<\/think>|$)/, '').trim();
+      return { thought, response };
+    }
+    return { thought: null, response: content };
+  };
+
   useEffect(() => {
     fetchModels();
     checkSystem();
@@ -969,16 +979,35 @@ export default function App() {
                           {msg.tool_calls.map((call, idx) => (
                             <div key={idx} className="flex items-center gap-2 p-2 bg-[#141414]/5 border-l-2 border-[#141414] font-mono text-[10px]">
                               <Terminal className="w-3 h-3 animate-pulse" />
-                              <span className="font-bold uppercase">Ejecutando:</span>
+                              <span className="font-bold uppercase">Ejecutando Herramienta:</span>
                               <span className="opacity-70">{call.name}</span>
                               <span className="opacity-40 italic">({JSON.stringify(call.args)})</span>
                             </div>
                           ))}
                         </div>
                       )}
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                        {msg.content}
-                      </ReactMarkdown>
+
+                      {(() => {
+                        const { thought, response } = parseContent(msg.content);
+                        return (
+                          <>
+                            {thought && (
+                              <div className="mb-4 p-3 bg-amber-50/50 border-l-2 border-amber-200 text-[11px] font-mono text-amber-900/70 italic">
+                                <div className="flex items-center gap-2 mb-1 not-italic font-bold uppercase text-[9px] opacity-50">
+                                  <Activity className="w-3 h-3" />
+                                  Proceso de Pensamiento
+                                </div>
+                                {thought}
+                              </div>
+                            )}
+                            {response && (
+                              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                {response}
+                              </ReactMarkdown>
+                            )}
+                          </>
+                        );
+                      })()}
                     </div>
 
                     {msg.role === 'assistant' && msg.metrics && modelConfig.show_metrics && (
@@ -1008,14 +1037,20 @@ export default function App() {
               ))}
 
               {isLoading && (
-                <div className="flex gap-4 p-6">
+                <div className="flex gap-4 p-6 bg-white/30 border border-dashed border-[#141414]/10">
                   <div className="w-8 h-8 bg-[#141414] text-[#E4E3E0] flex items-center justify-center rounded-sm shrink-0 animate-pulse">
                     <Bot className="w-5 h-5" />
                   </div>
-                  <div className="flex-1 space-y-2">
-                    <div className="h-2 bg-[#141414]/10 w-1/4 animate-pulse" />
-                    <div className="h-2 bg-[#141414]/10 w-3/4 animate-pulse" />
-                    <div className="h-2 bg-[#141414]/10 w-1/2 animate-pulse" />
+                  <div className="flex-1 space-y-3">
+                    <div className="flex items-center gap-2 text-[10px] font-mono uppercase font-bold opacity-50">
+                      <RefreshCw className="w-3 h-3 animate-spin" />
+                      {messages[messages.length - 1]?.tool_calls ? 'Procesando resultados de herramienta...' : 'Ollie está pensando...'}
+                    </div>
+                    <div className="space-y-2">
+                      <div className="h-2 bg-[#141414]/10 w-full animate-pulse" />
+                      <div className="h-2 bg-[#141414]/10 w-5/6 animate-pulse" />
+                      <div className="h-2 bg-[#141414]/10 w-4/6 animate-pulse" />
+                    </div>
                   </div>
                 </div>
               )}

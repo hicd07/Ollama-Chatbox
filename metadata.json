@@ -1,5 +1,5 @@
 {
-  "name": "Ollie",
+  "name": "Ollie - Sandbox de LLMs",
   "description": "A professional Ollama Sandbox GUI with file management tools, web research capabilities, and autonomous agentic functions.",
   "requestFramePermissions": []
 }
