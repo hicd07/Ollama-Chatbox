@@ -5,7 +5,12 @@ import * as XLSX from "xlsx";
 import { marked } from "marked";
 
 // Helper to strip markdown from a string for simple text runs
-const stripMd = (text: string) => text.replace(/(\*\*|__)(.*?)\1/g, '$2').replace(/(\*|_)(.*?)\1/g, '$2');
+const stripMd = (text: string) => text
+  .replace(/(\*\*|__)(.*?)\1/g, '$2')
+  .replace(/(\*|_)(.*?)\1/g, '$2')
+  .replace(/\[(.*?)\]\(.*?\)/g, '$1')
+  .replace(/`(.*?)`/g, '$1')
+  .replace(/~~(.*?)~~/g, '$1');
 
 export const exportToPDF = (title: string, content: string) => {
   const doc = new jsPDF();
@@ -160,7 +165,33 @@ export const exportToWord = async (title: string, content: string) => {
   });
 
   const doc = new Document({
-    sections: [{ children }],
+    creator: "Ollie Sandbox",
+    title: title,
+    description: "Documento generado automáticamente por Ollie Sandbox",
+    styles: {
+      default: {
+        document: {
+          run: {
+            font: "Calibri",
+            size: 22,
+            color: "141414",
+          },
+        },
+      },
+    },
+    sections: [{ 
+      properties: {
+        page: {
+          margin: {
+            top: 1440, // 1 inch
+            right: 1440,
+            bottom: 1440,
+            left: 1440,
+          },
+        },
+      },
+      children 
+    }],
   });
 
   const blob = await Packer.toBlob(doc);
@@ -171,10 +202,30 @@ export const exportToWord = async (title: string, content: string) => {
   link.click();
 };
 
-export const exportToExcel = (title: string, data: any[]) => {
+export const exportToExcel = (title: string, content: string) => {
+  const tokens = marked.lexer(content);
+  let data: any[] = [];
+  
+  // Try to find a table in the markdown
+  const tableToken = tokens.find(t => t.type === 'table') as any;
+  
+  if (tableToken) {
+    const headers = tableToken.header.map((h: any) => h.text);
+    data = tableToken.rows.map((row: any) => {
+      const rowObj: any = {};
+      row.forEach((cell: any, i: number) => {
+        rowObj[headers[i] || `Column_${i+1}`] = cell.text;
+      });
+      return rowObj;
+    });
+  } else {
+    // Fallback: just put the content in a single cell or split by lines
+    data = content.split('\n').filter(l => l.trim()).map(line => ({ Contenido: line }));
+  }
+
   const ws = XLSX.utils.json_to_sheet(data);
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Report");
+  XLSX.utils.book_append_sheet(wb, ws, "Reporte");
   XLSX.writeFile(wb, `${title.replace(/\s+/g, '_')}.xlsx`);
 };
 

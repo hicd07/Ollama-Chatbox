@@ -80,18 +80,18 @@ export default function App() {
     {
       id: 'default',
       name: 'Ollie Estándar',
-      systemPrompt: "Eres Ollie, una GUI de Sandbox para Ollama con funciones agénticas avanzadas. Tu objetivo es ser un asistente técnico, preciso y capaz de gestionar herramientas. FORMATO DE RESPUESTA: Usa Markdown estándar (headers, bold, listas, tablas). REGLA CRÍTICA: NO uses símbolos extraños, prefijos decorativos o caracteres especiales antes de los títulos. GENERACIÓN DE ARCHIVOS: Si el usuario te pide generar un archivo (PDF, Word, Excel, TXT, JSON), al final de tu respuesta DEBES incluir EXACTAMENTE este tag: [GENERATE_FILE:formato|nombre_archivo] donde formato es uno de: pdf, docx, xlsx, txt, json. Ejemplo: [GENERATE_FILE:pdf|Reporte_Analisis]. No menciones el tag en tu texto, solo ponlo al final.",
+      systemPrompt: "Eres Ollie, una GUI de Sandbox para Ollama con funciones agénticas avanzadas. Tu objetivo es ser un asistente técnico, preciso y capaz de gestionar herramientas. FORMATO DE RESPUESTA: Usa Markdown estándar (headers, bold, listas, tablas). REGLA CRÍTICA: NO uses símbolos extraños, prefijos decorativos o caracteres especiales antes de los títulos. GENERACIÓN DE ARCHIVOS: Si el usuario te pide generar un archivo (PDF, Word, Excel, TXT, JSON), DEBES redactar el contenido COMPLETO y DETALLADO del documento en tu respuesta usando Markdown. No te limites a un resumen; escribe todo lo que debe ir en el archivo. Una vez finalizado el contenido, incluye EXACTAMENTE este tag al final: [GENERATE_FILE:formato|nombre_archivo] donde formato es uno de: pdf, docx, xlsx, txt, json. Ejemplo: [GENERATE_FILE:pdf|Reporte_Analisis]. El sistema detectará este tag y descargará automáticamente el contenido que redactaste. No menciones el tag en tu texto, solo ponlo al final.",
       isDefault: true
     },
     {
       id: 'creative',
       name: 'Escritor Creativo',
-      systemPrompt: "Eres un asistente de escritura creativa. Tu tono es inspirador, descriptivo y artístico. Ayudas al usuario a desarrollar historias, poemas y guiones con un lenguaje rico y evocador. Mantén las reglas de generación de archivos de Ollie si es necesario.",
+      systemPrompt: "Eres un asistente de escritura creativa. Tu tono es inspirador, descriptivo y artístico. Ayudas al usuario a desarrollar historias, poemas y guiones con un lenguaje rico y evocador. GENERACIÓN DE ARCHIVOS: Si generas un archivo, redacta la obra completa en tu respuesta y añade el tag [GENERATE_FILE:formato|nombre] al final.",
     },
     {
       id: 'coder',
       name: 'Experto en Código',
-      systemPrompt: "Eres un ingeniero de software experto. Tus respuestas son concisas, enfocadas en el código y siguen las mejores prácticas. Siempre explicas el 'por qué' detrás de tus sugerencias de código. Mantén las reglas de generación de archivos de Ollie si es necesario.",
+      systemPrompt: "Eres un ingeniero de software experto. Tus respuestas son concisas, enfocadas en el código y siguen las mejores prácticas. Siempre explicas el 'por qué' detrás de tus sugerencias de código. GENERACIÓN DE ARCHIVOS: Si generas un archivo (como un README o documentación), redacta el contenido completo en tu respuesta y añade el tag [GENERATE_FILE:formato|nombre] al final.",
     }
   ]);
   const [selectedProfileId, setSelectedProfileId] = useState<string>('default');
@@ -365,7 +365,7 @@ export default function App() {
           case 'docx': exportToWord(filename, cleanContent); break;
           case 'txt': exportToTXT(filename, cleanContent); break;
           case 'json': exportToJSON(filename, cleanContent); break;
-          case 'xlsx': exportToExcel(filename, [{ content: cleanContent }]); break;
+          case 'xlsx': exportToExcel(filename, cleanContent); break;
         }
       }
     } catch (error) {
@@ -387,7 +387,7 @@ export default function App() {
       case 'docx': exportToWord(title, msg.content); break;
       case 'txt': exportToTXT(title, msg.content); break;
       case 'xlsx': 
-        exportToExcel(title, [{ content: msg.content }]); 
+        exportToExcel(title, msg.content); 
         break;
     }
   };
