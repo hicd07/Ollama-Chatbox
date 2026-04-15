@@ -27,7 +27,8 @@ import {
   Save,
   Copy,
   Paperclip,
-  X
+  X,
+  HelpCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import axios from 'axios';
@@ -724,33 +725,166 @@ export default function App() {
                         </div>
 
                         {/* Sección 3: Parámetros del LLM */}
-                        <div className="space-y-4">
-                          <h3 className="text-[10px] font-mono uppercase font-bold border-b border-[#141414]/10 pb-1">Parámetros del LLM</h3>
-                          <div className="space-y-4">
-                            <div className="space-y-2">
-                              <div className="flex justify-between items-center">
-                                <label className="text-[10px] font-mono uppercase opacity-50">Context Length</label>
-                                <span className="text-[10px] font-mono font-bold">{modelConfig.num_ctx}</span>
+                        <div className="space-y-6">
+                          <div className="flex items-center justify-between border-b border-[#141414]/10 pb-2">
+                            <div className="flex items-center gap-2">
+                              <h3 className="text-[10px] font-mono uppercase font-bold">Estimated Memory Usage</h3>
+                              <Badge variant="outline" className="text-[8px] rounded-none px-1 py-0 opacity-50">Beta</Badge>
+                            </div>
+                            <div className="flex gap-4 text-[10px] font-mono">
+                              <div className="flex gap-2">
+                                <span className="opacity-50 uppercase">GPU</span>
+                                <span className="font-bold border border-[#141414] px-1 bg-white/50">7.04 GB</span>
                               </div>
-                              <Slider value={[modelConfig.num_ctx]} min={512} max={32768} step={512} onValueChange={(v) => setModelConfig(prev => ({ ...prev, num_ctx: v[0] }))} />
+                              <div className="flex gap-2">
+                                <span className="opacity-50 uppercase">Total</span>
+                                <span className="font-bold border border-[#141414] px-1 bg-white/50">7.04 GB</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="space-y-6">
+                            {/* Context Length */}
+                            <div className="space-y-3">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <label className="text-[11px] font-mono font-bold uppercase">Context Length</label>
+                                  <HelpCircle className="w-3 h-3 opacity-30 cursor-help" />
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <Trash2 
+                                    className="w-3 h-3 opacity-30 hover:opacity-100 cursor-pointer transition-opacity" 
+                                    onClick={() => setModelConfig(prev => ({ ...prev, num_ctx: 4096 }))}
+                                  />
+                                  <div className="bg-white border border-[#141414] px-2 py-0.5 text-[11px] font-mono font-bold min-w-[60px] text-right">
+                                    {modelConfig.num_ctx}
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2 text-[9px] font-mono opacity-50">
+                                <span>Model supports up to</span>
+                                <Badge variant="outline" className="text-[8px] rounded-none px-1 py-0 bg-[#141414]/5">131072</Badge>
+                                <span>tokens</span>
+                              </div>
+                              <Slider 
+                                value={[modelConfig.num_ctx]} 
+                                min={512} 
+                                max={131072} 
+                                step={512} 
+                                onValueChange={(v) => {
+                                  if (v && v.length > 0) {
+                                    setModelConfig(prev => ({ ...prev, num_ctx: v[0] }));
+                                  }
+                                }} 
+                                className="py-2"
+                              />
                             </div>
 
-                            <div className="space-y-2">
-                              <div className="flex justify-between items-center">
-                                <label className="text-[10px] font-mono uppercase opacity-50">Temperature</label>
-                                <span className="text-[10px] font-mono font-bold">{modelConfig.temperature}</span>
+                            {/* GPU Offload */}
+                            <div className="space-y-3">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <label className="text-[11px] font-mono font-bold uppercase">GPU Offload</label>
+                                  <HelpCircle className="w-3 h-3 opacity-30 cursor-help" />
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <Trash2 
+                                    className="w-3 h-3 opacity-30 hover:opacity-100 cursor-pointer transition-opacity" 
+                                    onClick={() => setModelConfig(prev => ({ ...prev, num_gpu: 35 }))}
+                                  />
+                                  <div className="bg-white border border-[#141414] px-2 py-0.5 text-[11px] font-mono font-bold min-w-[60px] text-right">
+                                    {modelConfig.num_gpu}
+                                  </div>
+                                </div>
                               </div>
-                              <Slider value={[modelConfig.temperature]} min={0} max={2} step={0.1} onValueChange={(v) => setModelConfig(prev => ({ ...prev, temperature: v[0] }))} />
+                              <Slider 
+                                value={[modelConfig.num_gpu]} 
+                                min={0} 
+                                max={100} 
+                                step={1} 
+                                onValueChange={(v) => {
+                                  if (v && v.length > 0) {
+                                    setModelConfig(prev => ({ ...prev, num_gpu: v[0] }));
+                                  }
+                                }} 
+                                className="py-2"
+                              />
                             </div>
 
-                            <div className="grid grid-cols-2 gap-4">
-                              <div className="space-y-2">
-                                <label className="text-[10px] font-mono uppercase opacity-50">Top P</label>
-                                <Slider value={[modelConfig.top_p]} min={0} max={1} step={0.05} onValueChange={(v) => setModelConfig(prev => ({ ...prev, top_p: v[0] }))} />
+                            {/* CPU Thread Pool Size */}
+                            <div className="space-y-3">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <label className="text-[11px] font-mono font-bold uppercase">CPU Thread Pool Size</label>
+                                  <HelpCircle className="w-3 h-3 opacity-30 cursor-help" />
+                                </div>
+                                <div className="bg-white border border-[#141414] px-2 py-0.5 text-[11px] font-mono font-bold min-w-[60px] text-right">
+                                  {modelConfig.num_thread}
+                                </div>
                               </div>
+                              <Slider 
+                                value={[modelConfig.num_thread]} 
+                                min={1} 
+                                max={32} 
+                                step={1} 
+                                onValueChange={(v) => {
+                                  if (v && v.length > 0) {
+                                    setModelConfig(prev => ({ ...prev, num_thread: v[0] }));
+                                  }
+                                }} 
+                                className="py-2"
+                              />
+                            </div>
+
+                            {/* Other Params (Temperature, etc) */}
+                            <div className="pt-4 border-t border-[#141414]/5 space-y-4">
                               <div className="space-y-2">
-                                <label className="text-[10px] font-mono uppercase opacity-50">Top K</label>
-                                <Slider value={[modelConfig.top_k]} min={1} max={100} step={1} onValueChange={(v) => setModelConfig(prev => ({ ...prev, top_k: v[0] }))} />
+                                <div className="flex justify-between items-center">
+                                  <label className="text-[10px] font-mono uppercase opacity-50">Temperature</label>
+                                  <span className="text-[10px] font-mono font-bold">{modelConfig.temperature}</span>
+                                </div>
+                                <Slider 
+                                  value={[modelConfig.temperature]} 
+                                  min={0} 
+                                  max={2} 
+                                  step={0.1} 
+                                  onValueChange={(v) => {
+                                    if (v && v.length > 0) {
+                                      setModelConfig(prev => ({ ...prev, temperature: v[0] }));
+                                    }
+                                  }} 
+                                />
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                  <label className="text-[10px] font-mono uppercase opacity-50">Top P</label>
+                                  <Slider 
+                                    value={[modelConfig.top_p]} 
+                                    min={0} 
+                                    max={1} 
+                                    step={0.05} 
+                                    onValueChange={(v) => {
+                                      if (v && v.length > 0) {
+                                        setModelConfig(prev => ({ ...prev, top_p: v[0] }));
+                                      }
+                                    }} 
+                                  />
+                                </div>
+                                <div className="space-y-2">
+                                  <label className="text-[10px] font-mono uppercase opacity-50">Top K</label>
+                                  <Slider 
+                                    value={[modelConfig.top_k]} 
+                                    min={1} 
+                                    max={100} 
+                                    step={1} 
+                                    onValueChange={(v) => {
+                                      if (v && v.length > 0) {
+                                        setModelConfig(prev => ({ ...prev, top_k: v[0] }));
+                                      }
+                                    }} 
+                                  />
+                                </div>
                               </div>
                             </div>
                           </div>
