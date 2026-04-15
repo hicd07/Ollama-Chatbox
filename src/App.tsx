@@ -73,6 +73,41 @@ export default function App() {
     ]
   });
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [sidebarWidth, setSidebarWidth] = useState(320);
+  const [isResizing, setIsResizing] = useState(false);
+
+  const startResizing = () => {
+    setIsResizing(true);
+  };
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizing) return;
+      const newWidth = e.clientX;
+      if (newWidth >= 260 && newWidth <= 600) {
+        setSidebarWidth(newWidth);
+      }
+    };
+
+    const stopResizing = () => {
+      setIsResizing(false);
+    };
+
+    if (isResizing) {
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', stopResizing);
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+    }
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', stopResizing);
+      document.body.style.cursor = 'default';
+      document.body.style.userSelect = 'auto';
+    };
+  }, [isResizing]);
+
   const [globalError, setGlobalError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'status' | 'config' | 'connectors' | 'personality'>('status');
   const [connectors, setConnectors] = useState<Connector[]>([]);
@@ -504,10 +539,17 @@ export default function App() {
           {isSidebarOpen && (
             <motion.aside 
               initial={{ width: 0, opacity: 0 }}
-              animate={{ width: 320, opacity: 1 }}
+              animate={{ width: sidebarWidth, opacity: 1 }}
               exit={{ width: 0, opacity: 0 }}
-              className="border-r border-[#141414] flex flex-col bg-[#E4E3E0] z-20"
+              transition={{ duration: isResizing ? 0 : 0.3 }}
+              className="relative border-r border-[#141414] flex flex-col bg-[#E4E3E0] z-20"
             >
+              <div 
+                onMouseDown={startResizing}
+                className="absolute top-0 -right-1 w-2 h-full cursor-col-resize z-30 group"
+              >
+                <div className="absolute inset-y-0 left-1/2 w-[1px] bg-[#141414]/0 group-hover:bg-[#141414]/20 transition-colors" />
+              </div>
               <div className="p-6 border-bottom border-[#141414]">
                 <div className="flex items-center gap-2 mb-6">
                   <div className="w-8 h-8 bg-[#141414] flex items-center justify-center rounded-sm">
@@ -646,23 +688,6 @@ export default function App() {
                             </AlertDescription>
                           </Alert>
                         )}
-
-                        <div>
-                          <h3 className="text-[10px] font-mono uppercase opacity-50 mb-3">Capacidades</h3>
-                          <div className="grid grid-cols-2 gap-2">
-                            {[
-                              { icon: Globe, label: 'Web Search' },
-                              { icon: FileText, label: 'Reports' },
-                              { icon: BarChart3, label: 'Charts' },
-                              { icon: TableIcon, label: 'Tables' }
-                            ].map((cap, i) => (
-                              <div key={i} className="border border-[#141414] p-2 flex flex-col items-center justify-center gap-1 aspect-square">
-                                <cap.icon className="w-4 h-4" />
-                                <span className="text-[8px] uppercase font-bold text-center">{cap.label}</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
                       </div>
                     </ScrollArea>
                   )}
